@@ -1,0 +1,9 @@
+node_modules
+.next
+package-lock.json
+document
+supabase
+playwright-report
+test-results
+
+.next-e2e
