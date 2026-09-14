@@ -23,6 +23,7 @@ import {
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { ProductEvidence } from "./product-evidence";
+import { ConnectedProducts, ConnectedProductDetail } from "./connected-products";
 import { stageLabels } from "@/lib/preview-data";
 import type { Product } from "@/lib/domain/types";
 function ProductForm({
@@ -102,6 +103,18 @@ function ProductForm({
   );
 }
 export function Products() {
+  const { data } = useWorkspace();
+  return data.mode === "connected" ? <ConnectedProducts /> : <PreviewProducts />;
+}
+export function ProductDetail({ id }: { id: string }) {
+  const { data } = useWorkspace();
+  return data.mode === "connected" ? (
+    <ConnectedProductDetail id={id} />
+  ) : (
+    <PreviewProductDetail id={id} />
+  );
+}
+function PreviewProducts() {
   const { data, editable } = useWorkspace();
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("");
@@ -189,7 +202,7 @@ export function Products() {
     </>
   );
 }
-export function ProductDetail({ id }: { id: string }) {
+function PreviewProductDetail({ id }: { id: string }) {
   const { data, setData, editable, record, stageNotes, setStageNotes } =
     useWorkspace();
   const p = data.products.find((p) => p.id === id);

@@ -26,6 +26,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
   if (!membership) redirect("/login?error=membership");
   const workspace = membership.workspace_id;
   const { data: workVersion } = await client.rpc("admin_work_version");
+  const { data: catalogVersion } = await client.rpc("admin_catalog_version");
   const results = await Promise.all([
     client.from("admin_workspaces").select("*").eq("id", workspace).single(),
     (async () => {
@@ -71,6 +72,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     workspaceId: workspace,
     userId: user.id,
     workReady: workVersion === 1,
+    catalogReady: catalogVersion === 1,
     name: ws.data.name,
     startDate: ws.data.start_date,
     roles: membership.roles,

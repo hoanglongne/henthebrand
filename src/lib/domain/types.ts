@@ -33,6 +33,25 @@ export type Task = {
   product: string;
   updated_at?: string;
 };
+export const productStages = [
+  "idea",
+  "discovery",
+  "design",
+  "ready_for_build",
+  "build",
+  "pilot",
+  "live",
+  "learned",
+  "archived",
+] as const;
+export type ProductStage = (typeof productStages)[number];
+export const evidenceKinds = [
+  "Phỏng vấn",
+  "Prototype",
+  "Usability test",
+  "Tài liệu thiết kế",
+  "Ghi chú vận hành",
+] as const;
 export type Product = {
   id: string;
   name: string;
@@ -41,6 +60,7 @@ export type Product = {
   promise: string;
   stage: string;
   audience: string;
+  updated_at?: string;
 };
 export type Milestone = {
   id: string;
@@ -48,11 +68,13 @@ export type Milestone = {
   start_week: number;
   end_week: number;
   description: string;
+  updated_at?: string;
 };
 export type Snapshot = {
   workspaceId?: string;
   userId?: string;
   workReady?: boolean;
+  catalogReady?: boolean;
   mode: "preview" | "connected";
   name: string;
   roles: string[];
