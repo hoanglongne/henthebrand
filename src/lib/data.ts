@@ -27,6 +27,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
   const workspace = membership.workspace_id;
   const { data: workVersion } = await client.rpc("admin_work_version");
   const { data: catalogVersion } = await client.rpc("admin_catalog_version");
+  const { data: campaignVersion } = await client.rpc("admin_campaign_version");
   const results = await Promise.all([
     client.from("admin_workspaces").select("*").eq("id", workspace).single(),
     (async () => {
@@ -63,16 +64,28 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       .select("*")
       .eq("workspace_id", workspace)
       .eq("active", true),
+    client
+      .from("admin_campaigns")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("launch_date"),
+    client
+      .from("admin_campaign_readiness_items")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("created_at"),
   ]);
   if (results.some((r) => r.error))
     throw new Error("Không thể tải dữ liệu HẸN. Vui lòng thử lại.");
-  const [ws, tasks, products, milestones, members] = results;
+  const [ws, tasks, products, milestones, members, campaigns, readiness] =
+    results;
   return {
     mode: "connected",
     workspaceId: workspace,
     userId: user.id,
     workReady: workVersion === 1,
     catalogReady: catalogVersion === 1,
+    campaignsReady: campaignVersion === 1,
     name: ws.data.name,
     startDate: ws.data.start_date,
     roles: membership.roles,
@@ -88,6 +101,41 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     })) as Task[],
     products: products.data ?? [],
     milestones: milestones.data ?? [],
+    campaigns: (campaigns.data ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      occasion: c.occasion,
+      product:
+        products.data?.find((p) => p.id === c.product_id)?.name ??
+        "Chưa gắn sản phẩm",
+      product_id: c.product_id,
+      status: c.status,
+      channel: c.channel,
+      owner:
+        members.data?.find((m) => m.user_id === c.owner_id)?.display_name ??
+        "Chưa phân công",
+      owner_id: c.owner_id,
+      launch: c.launch_date,
+      end: c.end_date,
+      budget: c.budget,
+      orders: c.target_orders,
+      brief: c.brief,
+      stop: c.stop_condition,
+      briefDue: c.brief_due ?? undefined,
+      assetDue: c.asset_due ?? undefined,
+      postmortemDue: c.postmortem_due ?? undefined,
+      cutoff: c.cutoff_date ?? undefined,
+      support: c.support_note,
+      updated_at: c.updated_at,
+      readiness: (readiness.data ?? [])
+        .filter((r) => r.campaign_id === c.id)
+        .map((r) => ({
+          id: r.id,
+          label: r.label,
+          owner: r.owner_role,
+          done: r.completed,
+        })),
+    })),
     members: (members.data ?? []).map((m) => ({
       id: m.user_id,
       roles: m.roles,

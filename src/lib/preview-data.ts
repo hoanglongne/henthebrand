@@ -1,4 +1,9 @@
-export type Readiness = { label: string; done: boolean; owner: string };
+export type Readiness = {
+  id?: string;
+  label: string;
+  done: boolean;
+  owner: string;
+};
 export type Campaign = {
   briefDue?: string;
   assetDue?: string;
@@ -9,9 +14,11 @@ export type Campaign = {
   name: string;
   occasion: string;
   product: string;
+  product_id?: string | null;
   status: string;
   channel: string;
   owner: string;
+  owner_id?: string | null;
   launch: string;
   end: string;
   budget: number;
@@ -19,6 +26,7 @@ export type Campaign = {
   brief: string;
   stop: string;
   readiness: Readiness[];
+  updated_at?: string;
 };
 export type ContentItem = {
   id: string;

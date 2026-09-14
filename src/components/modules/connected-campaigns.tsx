@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   ArrowUpRight,
@@ -10,6 +11,8 @@ import {
   ArrowRight,
   Flag,
 } from "@phosphor-icons/react";
+import { mutateCampaign } from "@/app/actions/campaigns";
+import { type CampaignCommand } from "@/lib/domain/live-campaigns";
 import { useWorkspace } from "../workspace-provider";
 import {
   PageHeading,
@@ -17,25 +20,46 @@ import {
   Search,
   Modal,
   Field,
-  FormFooter,
   Badge,
   Empty,
   ModuleBoundary,
-  PreviewHint,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { dayOffset } from "@/lib/domain/rules";
-import {
-  campaignLabels,
-  readinessTemplate,
-  money,
-  shortDate,
-  type Campaign,
-} from "@/lib/preview-data";
-import {
-  ConnectedCampaigns,
-  ConnectedCampaignDetail,
-} from "./connected-campaigns";
+import { campaignLabels, money, shortDate, type Campaign } from "@/lib/preview-data";
+const planners = ["founder", "ops"];
+const contributors = ["founder", "ops", "brand_designer"];
+function useCampaignMutation(campaign?: Campaign) {
+  const { data } = useWorkspace();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  function run(command: CampaignCommand, onSuccess?: () => void) {
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await mutateCampaign({
+          workspaceId: data.workspaceId,
+          campaignId: campaign?.id ?? null,
+          expected: campaign?.updated_at ?? null,
+          ...command,
+        });
+        if (!result.ok) {
+          setError(result.message);
+          return;
+        }
+        onSuccess?.();
+        if (!campaign) router.push(`/campaigns/${result.campaignId}`);
+        router.refresh();
+      } catch {
+        setError(
+          "Kết nối bị gián đoạn. Tải lại để kiểm tra dữ liệu trước khi thử lại.",
+        );
+      }
+    });
+  }
+  return { run, pending, error };
+}
 function CampaignForm({
   campaign,
   onClose,
@@ -43,231 +67,221 @@ function CampaignForm({
   campaign?: Campaign;
   onClose: () => void;
 }) {
-  const { data, setCampaigns, editable, record } = useWorkspace();
-  const [error, setError] = useState("");
-  function submit(e: React.FormEvent<HTMLFormElement>) {
+  const { data } = useWorkspace();
+  const { run, pending, error } = useCampaignMutation(campaign);
+  function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!editable) return;
     const f = new FormData(e.currentTarget);
-    const v = (key: string) => String(f.get(key) || "");
-    const launch = v("launch"),
-      end = v("end");
-    if (end < launch) {
-      e.currentTarget
-        .querySelector<HTMLInputElement>("[name=end]")
-        ?.setCustomValidity("Ngày kết thúc phải sau ngày mở bán.");
-      e.currentTarget.reportValidity();
-      return;
-    }
-    if (
-      (v("briefDue") && v("briefDue") > launch) ||
-      (v("assetDue") && v("assetDue") > launch)
-    ) {
-      setError("Hạn brief và asset không thể sau ngày mở campaign.");
-      return;
-    }
-    if (v("postmortemDue") && v("postmortemDue") < end) {
-      setError("Postmortem cần nằm sau ngày kết thúc campaign.");
-      return;
-    }
-    const item: Campaign = {
-      briefDue: v("briefDue"),
-      assetDue: v("assetDue"),
-      postmortemDue: v("postmortemDue"),
-      cutoff: v("cutoff"),
-      support: v("support"),
-      id: campaign?.id ?? crypto.randomUUID(),
+    const v = (k: string) => String(f.get(k) || "").trim();
+    const num = (k: string) => Number(f.get(k) || 0);
+    const dateOrNull = (k: string) => v(k) || null;
+    const payload = {
       name: v("name"),
+      product_id: v("product_id") || null,
+      owner_id: v("owner_id") || null,
       occasion: v("occasion"),
-      product: v("product"),
-      status: campaign?.status ?? "draft",
       channel: v("channel"),
-      owner: v("owner"),
-      launch,
-      end,
-      budget: Number(v("budget")),
-      orders: Number(v("orders")),
+      launch_date: v("launch_date"),
+      end_date: v("end_date"),
+      budget: num("budget"),
+      target_orders: num("target_orders"),
       brief: v("brief"),
-      stop: v("stop"),
-      readiness:
-        campaign?.readiness ?? readinessTemplate.map((r) => ({ ...r })),
+      stop_condition: v("stop_condition"),
+      brief_due: dateOrNull("brief_due"),
+      asset_due: dateOrNull("asset_due"),
+      postmortem_due: dateOrNull("postmortem_due"),
+      cutoff_date: dateOrNull("cutoff_date"),
+      support_note: v("support_note"),
     };
-    setCampaigns((items) =>
-      campaign
-        ? items.map((c) => (c.id === campaign.id ? item : c))
-        : [item, ...items],
+    run(
+      {
+        operation: campaign ? "update" : "create",
+        payload,
+      } as CampaignCommand,
+      onClose,
     );
-    record(`${campaign ? "Cập nhật" : "Tạo"} campaign ${item.name}`);
-    onClose();
   }
   return (
-    <form onSubmit={submit} className="form-stack">
-      <Field label="Tên campaign">
-        <input
-          name="name"
-          required
-          defaultValue={campaign?.name}
-          placeholder="Ví dụ: Hẹn nhau ngày trở về"
-        />
-      </Field>
-      <div className="form-grid">
-        <Field label="Sản phẩm">
-          <select name="product" defaultValue={campaign?.product}>
-            {data.products.map((p) => (
-              <option key={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Người phụ trách">
-          <select name="owner" defaultValue={campaign?.owner}>
-            {data.members.map((m) => (
-              <option key={m.name}>{m.name}</option>
-            ))}
-          </select>
-        </Field>
-      </div>
-      <Field label="Dịp / occasion">
-        <input
-          name="occasion"
-          required
-          defaultValue={campaign?.occasion}
-          placeholder="Pilot, Tết, Valentine…"
-        />
-      </Field>
-      <div className="form-grid">
-        <Field label="Ngày bắt đầu">
+    <form className="form-stack" onSubmit={submit}>
+      <fieldset disabled={pending} className="live-fieldset">
+        <Field label="Tên campaign">
           <input
-            name="launch"
-            type="date"
+            name="name"
             required
-            defaultValue={campaign?.launch}
+            maxLength={200}
+            defaultValue={campaign?.name}
+            placeholder="Ví dụ: Hẹn nhau ngày trở về"
           />
         </Field>
-        <Field label="Ngày kết thúc">
-          <input
-            name="end"
-            type="date"
-            required
-            defaultValue={campaign?.end}
-            onInput={(e) => e.currentTarget.setCustomValidity("")}
-          />
-        </Field>
-        <Field label="Ngân sách trần (đ)">
-          <input
-            name="budget"
-            type="number"
-            min="0"
-            required
-            defaultValue={campaign?.budget ?? 0}
-          />
-        </Field>
-        <Field label="Số đơn mục tiêu">
-          <input
-            name="orders"
-            type="number"
-            min="0"
-            step="1"
-            required
-            defaultValue={campaign?.orders ?? 0}
-          />
-        </Field>
-      </div>
-      <details className="form-details" open={Boolean(campaign)}>
-        <summary>Deadline & vận hành</summary>
         <div className="form-grid">
-          <Field label="Hạn chốt brief">
-            <input
-              name="briefDue"
-              type="date"
-              defaultValue={
-                campaign?.briefDue ||
-                (campaign ? dayOffset(campaign.launch, -14) : "")
-              }
-            />
+          <Field label="Sản phẩm">
+            <select name="product_id" defaultValue={campaign?.product_id ?? ""}>
+              <option value="">Chưa gắn sản phẩm</option>
+              {data.products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </Field>
-          <Field label="Hạn duyệt asset">
-            <input
-              name="assetDue"
-              type="date"
-              defaultValue={
-                campaign?.assetDue ||
-                (campaign ? dayOffset(campaign.launch, -7) : "")
-              }
-            />
-          </Field>
-          <Field label="Hạn postmortem">
-            <input
-              name="postmortemDue"
-              type="date"
-              defaultValue={
-                campaign?.postmortemDue ||
-                (campaign ? dayOffset(campaign.end, 7) : "")
-              }
-            />
-          </Field>
-          <Field label="Cutoff giao hàng">
-            <input name="cutoff" type="date" defaultValue={campaign?.cutoff} />
+          <Field label="Người phụ trách">
+            <select name="owner_id" defaultValue={campaign?.owner_id ?? ""}>
+              <option value="">Chưa phân công</option>
+              {data.members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
-        <Field label="Support script / người trực">
-          <textarea
-            name="support"
-            rows={2}
-            defaultValue={campaign?.support}
-            placeholder="Ai trực, dùng kịch bản nào, xử lý ngoại lệ ra sao?"
+        <Field label="Dịp / occasion">
+          <input
+            name="occasion"
+            required
+            maxLength={200}
+            defaultValue={campaign?.occasion}
+            placeholder="Pilot, Tết, Valentine…"
           />
         </Field>
-      </details>
-      <Field label="Kênh">
-        <input
-          name="channel"
-          required
-          defaultValue={campaign?.channel ?? "TikTok"}
-        />
-      </Field>
-      <Field label="Brief">
-        <textarea
-          name="brief"
-          required
-          rows={4}
-          defaultValue={campaign?.brief}
-        />
-      </Field>
-      <Field label="Điều kiện dừng">
-        <textarea name="stop" required rows={2} defaultValue={campaign?.stop} />
-      </Field>
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
-      <FormFooter onClose={onClose} />
+        <div className="form-grid">
+          <Field label="Ngày bắt đầu">
+            <input
+              name="launch_date"
+              type="date"
+              required
+              defaultValue={campaign?.launch}
+            />
+          </Field>
+          <Field label="Ngày kết thúc">
+            <input
+              name="end_date"
+              type="date"
+              required
+              defaultValue={campaign?.end}
+            />
+          </Field>
+          <Field label="Ngân sách trần (đ)">
+            <input
+              name="budget"
+              type="number"
+              min="0"
+              required
+              defaultValue={campaign?.budget ?? 0}
+            />
+          </Field>
+          <Field label="Số đơn mục tiêu">
+            <input
+              name="target_orders"
+              type="number"
+              min="0"
+              step="1"
+              required
+              defaultValue={campaign?.orders ?? 0}
+            />
+          </Field>
+        </div>
+        <details className="form-details" open={Boolean(campaign)}>
+          <summary>Deadline & vận hành</summary>
+          <div className="form-grid">
+            <Field label="Hạn chốt brief">
+              <input
+                name="brief_due"
+                type="date"
+                defaultValue={
+                  campaign?.briefDue ||
+                  (campaign ? dayOffset(campaign.launch, -14) : "")
+                }
+              />
+            </Field>
+            <Field label="Hạn duyệt asset">
+              <input
+                name="asset_due"
+                type="date"
+                defaultValue={
+                  campaign?.assetDue ||
+                  (campaign ? dayOffset(campaign.launch, -7) : "")
+                }
+              />
+            </Field>
+            <Field label="Hạn postmortem">
+              <input
+                name="postmortem_due"
+                type="date"
+                defaultValue={
+                  campaign?.postmortemDue ||
+                  (campaign ? dayOffset(campaign.end, 7) : "")
+                }
+              />
+            </Field>
+            <Field label="Cutoff giao hàng">
+              <input
+                name="cutoff_date"
+                type="date"
+                defaultValue={campaign?.cutoff}
+              />
+            </Field>
+          </div>
+          <Field label="Support script / người trực">
+            <textarea
+              name="support_note"
+              rows={2}
+              maxLength={5000}
+              defaultValue={campaign?.support}
+              placeholder="Ai trực, dùng kịch bản nào, xử lý ngoại lệ ra sao?"
+            />
+          </Field>
+        </details>
+        <Field label="Kênh">
+          <input
+            name="channel"
+            required
+            maxLength={200}
+            defaultValue={campaign?.channel ?? "TikTok"}
+          />
+        </Field>
+        <Field label="Brief">
+          <textarea
+            name="brief"
+            required
+            rows={4}
+            maxLength={10000}
+            defaultValue={campaign?.brief}
+          />
+        </Field>
+        <Field label="Điều kiện dừng">
+          <textarea
+            name="stop_condition"
+            required
+            rows={2}
+            maxLength={5000}
+            defaultValue={campaign?.stop}
+          />
+        </Field>
+        {error && (
+          <p className="error-message" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="button-row">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button type="submit">{pending ? "Đang lưu…" : "Lưu campaign"}</Button>
+        </div>
+      </fieldset>
     </form>
   );
 }
-export function Campaigns() {
+export function ConnectedCampaigns() {
   const { data } = useWorkspace();
-  return data.mode === "connected" ? (
-    <ConnectedCampaigns />
-  ) : (
-    <PreviewCampaigns />
-  );
-}
-export function CampaignDetail({ id }: { id: string }) {
-  const { data } = useWorkspace();
-  return data.mode === "connected" ? (
-    <ConnectedCampaignDetail id={id} />
-  ) : (
-    <PreviewCampaignDetail id={id} />
-  );
-}
-function PreviewCampaigns() {
-  const { campaigns, editable } = useWorkspace();
+  const campaigns = data.campaigns;
   const [tab, setTab] = useState("list");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [create, setCreate] = useState(false);
   const [month, setMonth] = useState("2026-11");
+  const contributor = data.roles.some((r) => contributors.includes(r));
   const visible = campaigns.filter(
     (c) =>
       (!status || c.status === status) &&
@@ -292,12 +306,21 @@ function PreviewCampaigns() {
         title="Những cuộc hẹn sắp tới"
         description="Từ brief đầu tiên đến món quà cuối cùng được giao."
       >
-        <Button disabled={!editable} onClick={() => setCreate(true)}>
+        <Button
+          disabled={!data.campaignsReady || !contributor}
+          onClick={() => setCreate(true)}
+        >
           <Plus size={17} />
           Tạo campaign
         </Button>
       </PageHeading>
       <ModuleBoundary />
+      {!data.campaignsReady && (
+        <p className="notice">
+          Dữ liệu đã kết nối. Cần hoàn tất bước thiết lập Campaigns để bật
+          chỉnh sửa.
+        </p>
+      )}
       <div className="campaign-overview">
         <Flag size={28} />
         <div>
@@ -409,19 +432,13 @@ function PreviewCampaigns() {
           </div>
           <div className="calendar-scroll">
             <div className="calendar-grid">
-              {[
-                "Thứ 2",
-                "Thứ 3",
-                "Thứ 4",
-                "Thứ 5",
-                "Thứ 6",
-                "Thứ 7",
-                "Chủ nhật",
-              ].map((d) => (
-                <div className="calendar-day-label" key={d}>
-                  {d}
-                </div>
-              ))}
+              {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map(
+                (d) => (
+                  <div className="calendar-day-label" key={d}>
+                    {d}
+                  </div>
+                ),
+              )}
               {Array.from(
                 { length: Math.ceil((days + offset) / 7) * 7 },
                 (_, i) => {
@@ -471,64 +488,46 @@ function PreviewCampaigns() {
     </>
   );
 }
-function PreviewCampaignDetail({ id }: { id: string }) {
-  const { campaigns, setCampaigns, editable, record, data } = useWorkspace();
-  const campaign = campaigns.find((c) => c.id === id);
+export function ConnectedCampaignDetail({ id }: { id: string }) {
+  const { data } = useWorkspace();
+  const campaign = data.campaigns.find((c) => c.id === id);
+  return campaign ? (
+    <LiveCampaign key={id} campaign={campaign} />
+  ) : (
+    <Empty
+      title="Không tìm thấy campaign"
+      description="Tải lại danh sách hoặc kiểm tra quyền truy cập."
+    >
+      <Button asChild variant="outline">
+        <Link href="/campaigns">Về Campaigns</Link>
+      </Button>
+    </Empty>
+  );
+}
+function LiveCampaign({ campaign }: { campaign: Campaign }) {
+  const { data } = useWorkspace();
+  const router = useRouter();
+  const { run, pending, error } = useCampaignMutation(campaign);
   const [tab, setTab] = useState("readiness");
   const [edit, setEdit] = useState(false);
-  const [launch, setLaunch] = useState(false);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-  if (!campaign)
-    return (
-      <Empty
-        title="Không tìm thấy campaign"
-        description="Campaign có thể chỉ tồn tại trong phiên xem thử trước đó."
-      >
-        <Button asChild variant="outline">
-          <Link href="/campaigns">Về Campaigns</Link>
-        </Button>
-      </Empty>
-    );
+  const [launchOpen, setLaunchOpen] = useState(false);
   const c = campaign;
+  const founder = data.roles.includes("founder");
+  const contributor = data.roles.some((r) => contributors.includes(r));
+  const planner = data.roles.some((r) => planners.includes(r));
+  const unlocked = !!data.campaignsReady && contributor;
   const ready = c.readiness.every((r) => r.done);
   const done = c.readiness.filter((r) => r.done).length;
-  const allowOverride = editable || data.roles.includes("founder");
-  function toggle(index: number) {
-    if (!editable) return;
-    setCampaigns((items) =>
-      items.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              readiness: item.readiness.map((r, i) =>
-                i === index ? { ...r, done: !r.done } : r,
-              ),
-            }
-          : item,
-      ),
-    );
-    record(`Cập nhật readiness: ${c.readiness[index].label}`);
-  }
-  function launchCampaign(e: React.FormEvent) {
+  const locked = c.status === "live" || c.status === "complete";
+  function launchCampaign(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!editable) return;
-    if (campaigns.some((other) => other.id !== id && other.status === "live")) {
-      setError("Đã có một campaign đang chạy. Kết thúc campaign đó trước.");
-      return;
-    }
-    if (!ready && (!allowOverride || !reason.trim())) {
-      setError("Cần hoàn thành readiness hoặc ghi lý do override của Founder.");
-      return;
-    }
-    setCampaigns((items) =>
-      items.map((item) =>
-        item.id === id ? { ...item, status: "live" } : item,
-      ),
+    const f = new FormData(e.currentTarget);
+    const payload = { reason: String(f.get("reason") || "").trim() };
+    run({ operation: "launch", payload } as CampaignCommand, () =>
+      setLaunchOpen(false),
     );
-    record(`Mở campaign ${c.name}${reason ? `: ${reason}` : ""}`);
-    setLaunch(false);
   }
+  const refresh = () => router.refresh();
   return (
     <>
       <Link href="/campaigns" className="back-link">
@@ -537,33 +536,44 @@ function PreviewCampaignDetail({ id }: { id: string }) {
       <PageHeading eyebrow={c.occasion} title={c.name} description={c.product}>
         <Button
           variant="outline"
-          disabled={!editable}
+          disabled={!unlocked || pending}
           onClick={() => setEdit(true)}
         >
           Chỉnh sửa brief
         </Button>
         {c.status !== "live" && c.status !== "complete" ? (
-          <Button disabled={!editable} onClick={() => setLaunch(true)}>
+          <Button
+            disabled={!unlocked || pending}
+            onClick={() => setLaunchOpen(true)}
+          >
             Kiểm tra mở bán <ArrowUpRight size={17} />
           </Button>
         ) : c.status === "live" ? (
           <Button
-            disabled={!editable}
-            onClick={() => {
-              setCampaigns((items) =>
-                items.map((item) =>
-                  item.id === id ? { ...item, status: "complete" } : item,
-                ),
-              );
-              record(`Kết thúc campaign ${c.name}`);
-            }}
+            disabled={!data.campaignsReady || !planner || pending}
+            onClick={() =>
+              run({ operation: "complete", payload: {} } as CampaignCommand)
+            }
           >
-            Kết thúc bản thử
+            Kết thúc campaign
           </Button>
         ) : (
           <Badge tone="green">Đã kết thúc</Badge>
         )}
       </PageHeading>
+      {!data.campaignsReady && (
+        <p className="notice">
+          Cần hoàn tất bước thiết lập Campaigns để lưu thay đổi.
+        </p>
+      )}
+      {error && (
+        <div className="notice" role="alert">
+          <p>{error}</p>
+          <Button variant="outline" onClick={refresh} disabled={pending}>
+            Tải lại dữ liệu
+          </Button>
+        </div>
+      )}
       <div className="summary-strip">
         <div>
           <span>Thời gian</span>
@@ -604,15 +614,18 @@ function PreviewCampaignDetail({ id }: { id: string }) {
                 {done}/{c.readiness.length} hoàn tất
               </Badge>
             </div>
-            {c.readiness.map((r, i) => (
-              <label className="check-row" key={r.label}>
+            {c.readiness.map((r) => (
+              <label className="check-row" key={r.id}>
                 <input
                   type="checkbox"
                   checked={r.done}
-                  disabled={
-                    !editable || c.status === "live" || c.status === "complete"
+                  disabled={!unlocked || locked || pending}
+                  onChange={(e) =>
+                    run({
+                      operation: "readiness_toggle",
+                      payload: { id: r.id!, completed: e.target.checked },
+                    } as CampaignCommand)
                   }
-                  onChange={() => toggle(i)}
                 />
                 <span>
                   <strong>{r.label}</strong>
@@ -621,7 +634,6 @@ function PreviewCampaignDetail({ id }: { id: string }) {
                 {r.done && <CheckCircle size={19} />}
               </label>
             ))}
-            <PreviewHint />
           </section>
           <aside>
             <section className="surface launch-note">
@@ -699,40 +711,47 @@ function PreviewCampaignDetail({ id }: { id: string }) {
         <CampaignForm campaign={c} onClose={() => setEdit(false)} />
       </Modal>
       <Modal
-        open={launch}
-        onClose={() => setLaunch(false)}
+        open={launchOpen}
+        onClose={() => setLaunchOpen(false)}
         title="Kiểm tra trước khi mở bán"
       >
         <form onSubmit={launchCampaign} className="form-stack">
-          <Badge tone={ready ? "green" : "amber"}>
-            {ready
-              ? "Tất cả điều kiện đã hoàn tất"
-              : `${c.readiness.length - done} điều kiện chưa hoàn tất`}
-          </Badge>
-          <p>
-            {ready
-              ? "Bạn có thể thử chuyển campaign sang Đang chạy."
-              : "Chỉ Founder được override, kèm lý do chấp nhận rủi ro. Trong bản thử, bạn có thể xem trước luồng Founder này."}
-          </p>
-          {!ready && (
-            <Field label="Lý do override">
-              <textarea
-                required
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={4}
-              />
-            </Field>
-          )}
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
+          <fieldset disabled={pending} className="live-fieldset">
+            <Badge tone={ready ? "green" : "amber"}>
+              {ready
+                ? "Tất cả điều kiện đã hoàn tất"
+                : `${c.readiness.length - done} điều kiện chưa hoàn tất`}
+            </Badge>
+            <p>
+              {ready
+                ? "Founder hoặc Ops có thể mở campaign này."
+                : founder
+                  ? "Chỉ Founder được override, kèm lý do chấp nhận rủi ro."
+                  : "Cần hoàn tất readiness hoặc nhờ Founder override kèm lý do."}
             </p>
-          )}
-          <FormFooter
-            onClose={() => setLaunch(false)}
-            label="Mở campaign trong bản thử"
-          />
+            {!ready && (
+              <Field label="Lý do override">
+                <textarea name="reason" required rows={4} maxLength={2000} />
+              </Field>
+            )}
+            {error && (
+              <p className="error-message" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="button-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLaunchOpen(false)}
+              >
+                Hủy
+              </Button>
+              <Button type="submit">
+                {pending ? "Đang lưu…" : "Mở campaign"}
+              </Button>
+            </div>
+          </fieldset>
         </form>
       </Modal>
     </>

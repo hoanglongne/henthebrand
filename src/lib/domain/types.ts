@@ -1,3 +1,4 @@
+import type { Campaign } from "@/lib/preview-data";
 export const statuses = [
   "backlog",
   "ready",
@@ -75,12 +76,14 @@ export type Snapshot = {
   userId?: string;
   workReady?: boolean;
   catalogReady?: boolean;
+  campaignsReady?: boolean;
   mode: "preview" | "connected";
   name: string;
   roles: string[];
   tasks: Task[];
   products: Product[];
   milestones: Milestone[];
+  campaigns: Campaign[];
   startDate: string;
   members: {
     id?: string;
