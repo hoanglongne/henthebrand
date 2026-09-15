@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   ArrowUpRight,
@@ -9,6 +10,8 @@ import {
   Rows,
   SquaresFour,
 } from "@phosphor-icons/react";
+import { mutateContent } from "@/app/actions/content";
+import { type ContentCommand } from "@/lib/domain/live-content";
 import { useWorkspace } from "../workspace-provider";
 import {
   PageHeading,
@@ -16,19 +19,43 @@ import {
   Search,
   Modal,
   Field,
-  FormFooter,
   Badge,
   Empty,
   ModuleBoundary,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
-import {
-  contentStates,
-  shortDate,
-  safeUrl,
-  type ContentItem,
-} from "@/lib/preview-data";
-import { ConnectedContentStudio } from "./connected-content";
+import { contentStates, shortDate, type ContentItem } from "@/lib/preview-data";
+const contributors = ["founder", "ops", "brand_designer"];
+function useContentMutation(item?: ContentItem) {
+  const { data } = useWorkspace();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  function run(command: ContentCommand, onSuccess?: () => void) {
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await mutateContent({
+          workspaceId: data.workspaceId,
+          contentId: item?.id ?? null,
+          expected: item?.updated_at ?? null,
+          ...command,
+        });
+        if (!result.ok) {
+          setError(result.message);
+          return;
+        }
+        onSuccess?.();
+        router.refresh();
+      } catch {
+        setError(
+          "Kết nối bị gián đoạn. Tải lại để kiểm tra dữ liệu trước khi thử lại.",
+        );
+      }
+    });
+  }
+  return { run, pending, error };
+}
 function ContentForm({
   item,
   onClose,
@@ -36,145 +63,138 @@ function ContentForm({
   item?: ContentItem;
   onClose: () => void;
 }) {
-  const { campaigns, data, setContent, editable, record } = useWorkspace();
+  const { data } = useWorkspace();
+  const campaigns = data.campaigns;
+  const { run, pending, error } = useContentMutation(item);
   const [status, setStatus] = useState(item?.status ?? "Idea");
-  const [error, setError] = useState("");
-  function submit(e: React.FormEvent<HTMLFormElement>) {
+  function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!editable) return;
     const f = new FormData(e.currentTarget);
     const v = (k: string) => String(f.get(k) || "").trim();
-    if (v("url") && !safeUrl(v("url"))) {
-      setError("Link asset cần bắt đầu bằng https:// hoặc http://.");
-      return;
-    }
-    if (
-      ["Scheduled", "Published", "Learned"].includes(status) &&
-      (!v("publish") || !v("url"))
-    ) {
-      setError("Cần ngày đăng và link asset trước khi lên lịch hoặc xuất bản.");
-      return;
-    }
-    const next: ContentItem = {
-      id: item?.id ?? crypto.randomUUID(),
+    const payload = {
       title: v("title"),
       hook: v("hook"),
       format: v("format"),
       channel: v("channel"),
       status,
-      owner: v("owner"),
-      publish: v("publish"),
-      campaign: v("campaign"),
-      url: v("url"),
+      owner_id: v("owner_id") || null,
+      campaign_id: v("campaign_id") || null,
+      publish_date: v("publish") || null,
+      asset_url: v("url") || null,
       learning: v("learning"),
     };
-    setContent((items) =>
-      item ? items.map((i) => (i.id === item.id ? next : i)) : [next, ...items],
+    run(
+      { operation: item ? "update" : "create", payload } as ContentCommand,
+      onClose,
     );
-    record(`Cập nhật nội dung: ${next.title}`);
-    onClose();
   }
   return (
     <form className="form-stack" onSubmit={submit}>
-      <Field label="Tên nội dung">
-        <input name="title" required defaultValue={item?.title} />
-      </Field>
-      <Field label="Hook / câu mở đầu">
-        <textarea
-          name="hook"
-          rows={3}
-          required
-          defaultValue={item?.hook}
-          placeholder="Điều gì khiến người xem muốn dừng lại?"
-        />
-      </Field>
-      <div className="form-grid">
-        <Field label="Trạng thái">
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            {contentStates.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+      <fieldset disabled={pending} className="live-fieldset">
+        <Field label="Tên nội dung">
+          <input name="title" required maxLength={200} defaultValue={item?.title} />
         </Field>
-        <Field label="Campaign">
-          <select name="campaign" defaultValue={item?.campaign}>
-            <option value="">Nội dung độc lập</option>
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+        <Field label="Hook / câu mở đầu">
+          <textarea
+            name="hook"
+            rows={3}
+            maxLength={2000}
+            defaultValue={item?.hook}
+            placeholder="Điều gì khiến người xem muốn dừng lại?"
+          />
         </Field>
-        <Field label="Format">
-          <select name="format" defaultValue={item?.format}>
-            {[
-              "Video ngắn",
-              "Carousel",
-              "Reaction",
-              "Behind the scenes",
-              "Story",
-            ].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+        <div className="form-grid">
+          <Field label="Trạng thái">
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              {contentStates.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Campaign">
+            <select name="campaign_id" defaultValue={item?.campaign ?? ""}>
+              <option value="">Nội dung độc lập</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Format">
+            <select name="format" defaultValue={item?.format}>
+              {[
+                "Video ngắn",
+                "Carousel",
+                "Reaction",
+                "Behind the scenes",
+                "Story",
+              ].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Kênh đăng">
+            <select name="channel" defaultValue={item?.channel}>
+              {["TikTok", "Instagram", "Facebook", "Landing"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Người phụ trách">
+            <select name="owner_id" defaultValue={item?.owner_id ?? ""}>
+              <option value="">Chưa phân công</option>
+              {data.members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Ngày đăng dự kiến">
+            <input name="publish" type="date" defaultValue={item?.publish} />
+          </Field>
+        </div>
+        <Field
+          label="Link asset / bài đã đăng"
+          hint="Chỉ lưu đường dẫn; không tự đăng lên mạng xã hội."
+        >
+          <input
+            name="url"
+            type="url"
+            maxLength={2048}
+            defaultValue={item?.url}
+            placeholder="https://…"
+          />
         </Field>
-        <Field label="Kênh đăng">
-          <select name="channel" defaultValue={item?.channel}>
-            {["TikTok", "Instagram", "Facebook", "Landing"].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+        <Field label="Bài học sau xuất bản">
+          <textarea
+            name="learning"
+            rows={3}
+            maxLength={5000}
+            defaultValue={item?.learning}
+            placeholder="Điều gì nên giữ, điều gì sẽ thử khác?"
+          />
         </Field>
-        <Field label="Người phụ trách">
-          <select name="owner" defaultValue={item?.owner}>
-            {data.members.map((m) => (
-              <option key={m.name}>{m.name}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Ngày đăng dự kiến">
-          <input name="publish" type="date" defaultValue={item?.publish} />
-        </Field>
-      </div>
-      <Field
-        label="Link asset / bài đã đăng"
-        hint="Chỉ lưu đường dẫn; không tự đăng lên mạng xã hội."
-      >
-        <input
-          name="url"
-          type="url"
-          defaultValue={item?.url}
-          placeholder="https://…"
-        />
-      </Field>
-      <Field label="Bài học sau xuất bản">
-        <textarea
-          name="learning"
-          rows={3}
-          defaultValue={item?.learning}
-          placeholder="Điều gì nên giữ, điều gì sẽ thử khác?"
-        />
-      </Field>
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
-      <FormFooter onClose={onClose} />
+        {error && (
+          <p className="error-message" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="button-row">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button type="submit">{pending ? "Đang lưu…" : "Lưu nội dung"}</Button>
+        </div>
+      </fieldset>
     </form>
   );
 }
-export function ContentStudio() {
+export function ConnectedContentStudio() {
   const { data } = useWorkspace();
-  return data.mode === "connected" ? (
-    <ConnectedContentStudio />
-  ) : (
-    <PreviewContentStudio />
-  );
-}
-function PreviewContentStudio() {
-  const { content, campaigns, editable } = useWorkspace();
+  const content = data.content;
+  const campaigns = data.campaigns;
   const [stage, setStage] = useState("all");
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState("");
@@ -182,6 +202,7 @@ function PreviewContentStudio() {
   const [selection, setSelection] = useState<ContentItem | null | undefined>(
     undefined,
   );
+  const contributor = data.roles.some((r) => contributors.includes(r));
   const visible = content.filter(
     (c) =>
       (stage === "all" || c.status === stage) &&
@@ -250,11 +271,20 @@ function PreviewContentStudio() {
         title="Chuyện hay, kể đúng lúc"
         description="Từ một câu hook đến nội dung khiến ai đó muốn gặp nhau."
       >
-        <Button disabled={!editable} onClick={() => setSelection(null)}>
+        <Button
+          disabled={!data.contentReady || !contributor}
+          onClick={() => setSelection(null)}
+        >
           <Plus size={17} />Ý tưởng mới
         </Button>
       </PageHeading>
       <ModuleBoundary />
+      {!data.contentReady && (
+        <p className="notice">
+          Dữ liệu đã kết nối. Cần hoàn tất bước thiết lập Content Studio để bật
+          chỉnh sửa.
+        </p>
+      )}
       <Tabs
         value={stage}
         onChange={setStage}
@@ -307,7 +337,7 @@ function PreviewContentStudio() {
         >
           <Button
             variant="outline"
-            disabled={!editable}
+            disabled={!data.contentReady || !contributor}
             onClick={() => setSelection(null)}
           >
             Thêm ý tưởng

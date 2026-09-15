@@ -28,6 +28,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
   const { data: workVersion } = await client.rpc("admin_work_version");
   const { data: catalogVersion } = await client.rpc("admin_catalog_version");
   const { data: campaignVersion } = await client.rpc("admin_campaign_version");
+  const { data: contentVersion } = await client.rpc("admin_content_version");
   const results = await Promise.all([
     client.from("admin_workspaces").select("*").eq("id", workspace).single(),
     (async () => {
@@ -74,10 +75,15 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       .select("*")
       .eq("workspace_id", workspace)
       .order("created_at"),
+    client
+      .from("admin_content_items")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("created_at", { ascending: false }),
   ]);
   if (results.some((r) => r.error))
     throw new Error("Không thể tải dữ liệu HẸN. Vui lòng thử lại.");
-  const [ws, tasks, products, milestones, members, campaigns, readiness] =
+  const [ws, tasks, products, milestones, members, campaigns, readiness, content] =
     results;
   return {
     mode: "connected",
@@ -86,6 +92,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     workReady: workVersion === 1,
     catalogReady: catalogVersion === 1,
     campaignsReady: campaignVersion === 1,
+    contentReady: contentVersion === 1,
     name: ws.data.name,
     startDate: ws.data.start_date,
     roles: membership.roles,
@@ -135,6 +142,23 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
           owner: r.owner_role,
           done: r.completed,
         })),
+    })),
+    content: (content.data ?? []).map((c) => ({
+      id: c.id,
+      title: c.title,
+      hook: c.hook,
+      format: c.format,
+      channel: c.channel,
+      status: c.status,
+      owner:
+        members.data?.find((m) => m.user_id === c.owner_id)?.display_name ??
+        "Chưa phân công",
+      owner_id: c.owner_id,
+      publish: c.publish_date ?? "",
+      campaign: c.campaign_id ?? "",
+      url: c.asset_url ?? "",
+      learning: c.learning,
+      updated_at: c.updated_at,
     })),
     members: (members.data ?? []).map((m) => ({
       id: m.user_id,

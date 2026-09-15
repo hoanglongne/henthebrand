@@ -101,7 +101,11 @@ export function WorkspaceProvider({
   );
   const campaigns = editable ? campaignsDraft : (initial.campaigns ?? []);
   const setCampaigns = setCampaignsDraft;
-  const [content, setContent] = useState(editable ? demoContent : []);
+  const [contentDraft, setContentDraft] = useState(
+    editable ? demoContent : [],
+  );
+  const content = editable ? contentDraft : (initial.content ?? []);
+  const setContent = setContentDraft;
   const [stock, setStock] = useState(editable ? demoStock : []);
   const [vendors, setVendors] = useState(editable ? demoVendors : []);
   const [issues, setIssues] = useState(editable ? demoIssues : []);

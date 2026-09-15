@@ -36,10 +36,12 @@ export type ContentItem = {
   channel: string;
   status: string;
   owner: string;
+  owner_id?: string | null;
   publish: string;
   campaign: string;
   url: string;
   learning: string;
+  updated_at?: string;
 };
 export type Stock = {
   id: string;
