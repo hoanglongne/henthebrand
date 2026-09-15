@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Package,
@@ -8,6 +9,12 @@ import {
   CheckCircle,
   DownloadSimple,
 } from "@phosphor-icons/react";
+import { mutateStock, mutateVendor, mutateIssue } from "@/app/actions/operations";
+import {
+  type StockCommand,
+  type VendorCommand,
+  type IssueCommand,
+} from "@/lib/domain/live-operations";
 import { useWorkspace } from "../workspace-provider";
 import {
   PageHeading,
@@ -15,19 +22,56 @@ import {
   Search,
   Modal,
   Field,
-  FormFooter,
   Badge,
   Empty,
   ModuleBoundary,
-  PreviewHint,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { money, type Stock, type Vendor, type Issue } from "@/lib/preview-data";
-import { ConnectedOperations } from "./connected-operations";
+const planners = ["founder", "ops"];
 type Selection =
   | { kind: "stock"; item?: Stock }
   | { kind: "vendor"; item?: Vendor }
   | { kind: "issue"; item?: Issue };
+function useOpsMutation<TCommand>(
+  mutate: (input: unknown) => Promise<{
+    ok: boolean;
+    message?: string;
+    id?: string;
+  }>,
+  idField: string,
+  itemId: string | undefined,
+  expected: string | undefined,
+) {
+  const { data } = useWorkspace();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  function run(command: TCommand & { operation: string; payload: object }, onSuccess?: () => void) {
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await mutate({
+          workspaceId: data.workspaceId,
+          [idField]: itemId ?? null,
+          expected: expected ?? null,
+          ...command,
+        });
+        if (!result.ok) {
+          setError(result.message ?? "Không lưu được dữ liệu.");
+          return;
+        }
+        onSuccess?.();
+        router.refresh();
+      } catch {
+        setError(
+          "Kết nối bị gián đoạn. Tải lại để kiểm tra dữ liệu trước khi thử lại.",
+        );
+      }
+    });
+  }
+  return { run, pending, error };
+}
 function OpsForm({
   selection,
   onClose,
@@ -35,245 +79,250 @@ function OpsForm({
   selection: Selection;
   onClose: () => void;
 }) {
-  const { editable, record, setStock, setVendors, setIssues, data } =
-    useWorkspace();
-  const [error, setError] = useState("");
-  function submit(e: React.FormEvent<HTMLFormElement>) {
+  const { data } = useWorkspace();
+  const stockMutation = useOpsMutation<StockCommand>(
+    mutateStock,
+    "stockId",
+    selection.kind === "stock" ? selection.item?.id : undefined,
+    selection.kind === "stock" ? selection.item?.updated_at : undefined,
+  );
+  const vendorMutation = useOpsMutation<VendorCommand>(
+    mutateVendor,
+    "vendorId",
+    selection.kind === "vendor" ? selection.item?.id : undefined,
+    selection.kind === "vendor" ? selection.item?.updated_at : undefined,
+  );
+  const issueMutation = useOpsMutation<IssueCommand>(
+    mutateIssue,
+    "issueId",
+    selection.kind === "issue" ? selection.item?.id : undefined,
+    selection.kind === "issue" ? selection.item?.updated_at : undefined,
+  );
+  const { pending, error } =
+    selection.kind === "stock"
+      ? stockMutation
+      : selection.kind === "vendor"
+        ? vendorMutation
+        : issueMutation;
+  function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!editable) return;
     const f = new FormData(e.currentTarget);
     const v = (k: string) => String(f.get(k) || "").trim();
-    const n = (k: string) => Number(v(k));
-    const id = selection.item?.id ?? crypto.randomUUID();
+    const n = (k: string) => Number(v(k) || 0);
+    const operation = selection.item ? "update" : "create";
     if (selection.kind === "stock") {
-      if (n("reserved") > n("onHand")) {
-        setError("Số đã giữ không thể lớn hơn tồn thực tế.");
-        return;
-      }
-      const next: Stock = {
-        id,
+      const payload = {
         name: v("name"),
         code: v("code"),
         category: v("category"),
-        onHand: n("onHand"),
+        on_hand: n("onHand"),
         reserved: n("reserved"),
         buffer: n("buffer"),
         reorder: n("reorder"),
         cost: n("cost"),
       };
-      setStock((items) =>
-        selection.item
-          ? items.map((i) => (i.id === id ? next : i))
-          : [...items, next],
-      );
+      stockMutation.run({ operation, payload } as StockCommand, onClose);
     } else if (selection.kind === "vendor") {
-      const next: Vendor = {
-        id,
+      const payload = {
         name: v("name"),
         category: v("category"),
         contact: v("contact"),
-        lead: n("lead"),
+        lead_time_days: n("lead"),
         moq: n("moq"),
-        sample: v("sample"),
+        sample_status: v("sample"),
         note: v("note"),
       };
-      setVendors((items) =>
-        selection.item
-          ? items.map((i) => (i.id === id ? next : i))
-          : [...items, next],
-      );
+      vendorMutation.run({ operation, payload } as VendorCommand, onClose);
     } else {
-      if (v("status") === "Đã xử lý" && !v("resolution")) {
-        setError("Ghi cách giải quyết trước khi đóng sự cố.");
-        return;
-      }
-      const next: Issue = {
-        id,
+      const payload = {
         title: v("title"),
-        ref: v("ref"),
+        external_ref: v("ref"),
         severity: v("severity"),
-        owner: v("owner"),
         status: v("status"),
+        owner_id: v("owner_id") || null,
         resolution: v("resolution"),
       };
-      setIssues((items) =>
-        selection.item
-          ? items.map((i) => (i.id === id ? next : i))
-          : [next, ...items],
-      );
+      issueMutation.run({ operation, payload } as IssueCommand, onClose);
     }
-    record("Cập nhật bản thử vận hành");
-    onClose();
   }
   return (
     <form className="form-stack" onSubmit={submit}>
-      {selection.kind === "stock" ? (
-        <>
-          <Field label="Tên SKU / vật tư">
-            <input name="name" required defaultValue={selection.item?.name} />
-          </Field>
-          <div className="form-grid">
-            <Field label="Mã SKU">
-              <input name="code" required defaultValue={selection.item?.code} />
+      <fieldset disabled={pending} className="live-fieldset">
+        {selection.kind === "stock" ? (
+          <>
+            <Field label="Tên SKU / vật tư">
+              <input name="name" required maxLength={200} defaultValue={selection.item?.name} />
             </Field>
-            <Field label="Nhóm">
-              <select name="category" defaultValue={selection.item?.category}>
-                {["Thành phẩm", "Bao bì", "Phụ kiện"].map((v) => (
-                  <option key={v}>{v}</option>
-                ))}
-              </select>
+            <div className="form-grid">
+              <Field label="Mã SKU">
+                <input name="code" required maxLength={50} defaultValue={selection.item?.code} />
+              </Field>
+              <Field label="Nhóm">
+                <select name="category" defaultValue={selection.item?.category}>
+                  {["Thành phẩm", "Bao bì", "Phụ kiện"].map((v) => (
+                    <option key={v}>{v}</option>
+                  ))}
+                </select>
+              </Field>
+              {(
+                [
+                  { key: "onHand", label: "Tồn thực tế" },
+                  { key: "reserved", label: "Đã giữ cho đơn" },
+                  { key: "buffer", label: "Buffer" },
+                  { key: "reorder", label: "Ngưỡng đặt thêm" },
+                  { key: "cost", label: "Chi phí mỗi đơn vị (đ)" },
+                ] as const
+              ).map(({ key, label }) => (
+                <Field key={key} label={label}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    name={key}
+                    defaultValue={selection.item?.[key] ?? 0}
+                  />
+                </Field>
+              ))}
+            </div>
+          </>
+        ) : selection.kind === "vendor" ? (
+          <>
+            <Field label="Tên đối tác">
+              <input name="name" required maxLength={200} defaultValue={selection.item?.name} />
             </Field>
-            {(
-              [
-                { key: "onHand", label: "Tồn thực tế" },
-                { key: "reserved", label: "Đã giữ cho đơn" },
-                { key: "buffer", label: "Buffer" },
-                { key: "reorder", label: "Ngưỡng đặt thêm" },
-                { key: "cost", label: "Chi phí mỗi đơn vị (đ)" },
-              ] as const
-            ).map(({ key, label }) => (
-              <Field key={key} label={label}>
+            <Field label="Nhóm cung ứng">
+              <input
+                name="category"
+                required
+                maxLength={100}
+                defaultValue={selection.item?.category}
+              />
+            </Field>
+            <Field label="Thông tin liên hệ">
+              <input
+                name="contact"
+                required
+                maxLength={300}
+                defaultValue={selection.item?.contact}
+                placeholder="Người phụ trách / email / số điện thoại"
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Lead time (ngày)">
                 <input
+                  name="lead"
                   type="number"
                   min="0"
                   step="1"
                   required
-                  name={key}
-                  defaultValue={selection.item?.[key] ?? 0}
+                  defaultValue={selection.item?.lead ?? 7}
                 />
               </Field>
-            ))}
-          </div>
-        </>
-      ) : selection.kind === "vendor" ? (
-        <>
-          <Field label="Tên đối tác">
-            <input name="name" required defaultValue={selection.item?.name} />
-          </Field>
-          <Field label="Nhóm cung ứng">
-            <input
-              name="category"
-              required
-              defaultValue={selection.item?.category}
-            />
-          </Field>
-          <Field label="Thông tin liên hệ">
-            <input
-              name="contact"
-              required
-              defaultValue={selection.item?.contact}
-              placeholder="Người phụ trách / email / số điện thoại"
-            />
-          </Field>
-          <div className="form-grid">
-            <Field label="Lead time (ngày)">
-              <input
-                name="lead"
-                type="number"
-                min="0"
-                step="1"
-                required
-                defaultValue={selection.item?.lead ?? 7}
-              />
-            </Field>
-            <Field label="MOQ">
-              <input
-                name="moq"
-                type="number"
-                min="1"
-                step="1"
-                required
-                defaultValue={selection.item?.moq ?? 50}
-              />
-            </Field>
-          </div>
-          <Field label="Trạng thái mẫu">
-            <select name="sample" defaultValue={selection.item?.sample}>
-              {[
-                "Chưa đặt mẫu",
-                "Đang chờ mẫu",
-                "Cần chỉnh mẫu",
-                "Đã duyệt mẫu",
-              ].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Ghi chú">
-            <textarea
-              name="note"
-              rows={4}
-              defaultValue={selection.item?.note}
-            />
-          </Field>
-        </>
-      ) : (
-        <>
-          <Field label="Sự cố">
-            <input name="title" required defaultValue={selection.item?.title} />
-          </Field>
-          <Field
-            label="Mã đơn / dry run"
-            hint="Chỉ dùng mã đối chiếu; không nhập nội dung riêng tư của khách."
-          >
-            <input name="ref" required defaultValue={selection.item?.ref} />
-          </Field>
-          <div className="form-grid">
-            <Field label="Mức độ">
-              <select name="severity" defaultValue={selection.item?.severity}>
-                {["Thấp", "Trung bình", "Cao"].map((s) => (
+              <Field label="MOQ">
+                <input
+                  name="moq"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  defaultValue={selection.item?.moq ?? 50}
+                />
+              </Field>
+            </div>
+            <Field label="Trạng thái mẫu">
+              <select name="sample" defaultValue={selection.item?.sample}>
+                {[
+                  "Chưa đặt mẫu",
+                  "Đang chờ mẫu",
+                  "Cần chỉnh mẫu",
+                  "Đã duyệt mẫu",
+                ].map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Trạng thái">
-              <select name="status" defaultValue={selection.item?.status}>
-                {["Mới ghi nhận", "Đang xử lý", "Đã xử lý"].map((s) => (
-                  <option key={s}>{s}</option>
+            <Field label="Ghi chú">
+              <textarea
+                name="note"
+                rows={4}
+                maxLength={2000}
+                defaultValue={selection.item?.note}
+              />
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label="Sự cố">
+              <input name="title" required maxLength={200} defaultValue={selection.item?.title} />
+            </Field>
+            <Field
+              label="Mã đơn / dry run"
+              hint="Chỉ dùng mã đối chiếu; không nhập nội dung riêng tư của khách."
+            >
+              <input name="ref" required maxLength={100} defaultValue={selection.item?.ref} />
+            </Field>
+            <div className="form-grid">
+              <Field label="Mức độ">
+                <select name="severity" defaultValue={selection.item?.severity}>
+                  {["Thấp", "Trung bình", "Cao"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Trạng thái">
+                <select name="status" defaultValue={selection.item?.status}>
+                  {["Mới ghi nhận", "Đang xử lý", "Đã xử lý"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Người xử lý">
+              <select name="owner_id" defaultValue={selection.item?.owner_id ?? ""}>
+                <option value="">Chưa phân công</option>
+                {data.members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
                 ))}
               </select>
             </Field>
-          </div>
-          <Field label="Người xử lý">
-            <select name="owner" defaultValue={selection.item?.owner ?? "Ops"}>
-              {data.members.map((m) => (
-                <option key={m.name}>{m.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Cách giải quyết">
-            <textarea
-              name="resolution"
-              rows={4}
-              defaultValue={selection.item?.resolution}
-            />
-          </Field>
-        </>
-      )}
-      {error && (
-        <p role="alert" className="error-message">
-          {error}
-        </p>
-      )}
-      <FormFooter onClose={onClose} />
+            <Field label="Cách giải quyết">
+              <textarea
+                name="resolution"
+                rows={4}
+                maxLength={3000}
+                defaultValue={selection.item?.resolution}
+              />
+            </Field>
+          </>
+        )}
+        {error && (
+          <p role="alert" className="error-message">
+            {error}
+          </p>
+        )}
+        <div className="button-row">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button type="submit">{pending ? "Đang lưu…" : "Lưu"}</Button>
+        </div>
+      </fieldset>
     </form>
   );
 }
-export function Operations() {
+export function ConnectedOperations() {
   const { data } = useWorkspace();
-  return data.mode === "connected" ? (
-    <ConnectedOperations />
-  ) : (
-    <PreviewOperations />
-  );
-}
-function PreviewOperations() {
-  const { stock, vendors, issues, editable } = useWorkspace();
+  const { stock, vendors, issues } = data;
   const [tab, setTab] = useState("inventory");
   const [query, setQuery] = useState("");
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [packed, setPacked] = useState<string[]>([]);
+  const planner = data.roles.some((r) => planners.includes(r));
+  const unlocked = !!data.operationsReady && planner;
   const low = stock.filter(
     (s) => s.onHand - s.reserved <= Math.max(s.buffer, s.reorder),
   );
@@ -310,7 +359,7 @@ function PreviewOperations() {
       ]),
     ];
     const csv =
-      "\ufeff" +
+      "﻿" +
       rows
         .map((r) =>
           r
@@ -330,7 +379,7 @@ function PreviewOperations() {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = editable ? "hen-ton-kho-du-lieu-mau.csv" : "hen-ton-kho.csv";
+    a.download = "hen-ton-kho.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -342,7 +391,7 @@ function PreviewOperations() {
         description="Đối tác, vật tư và từng bước đóng gói ở cùng một nơi."
       >
         <Button
-          disabled={!editable}
+          disabled={!unlocked}
           onClick={() =>
             setSelection({
               kind:
@@ -363,6 +412,12 @@ function PreviewOperations() {
         </Button>
       </PageHeading>
       <ModuleBoundary />
+      {!data.operationsReady && (
+        <p className="notice">
+          Dữ liệu đã kết nối. Cần hoàn tất bước thiết lập Operations để bật
+          chỉnh sửa.
+        </p>
+      )}
       <div className="ops-overview">
         <div>
           <Package size={25} />
@@ -576,7 +631,6 @@ function PreviewOperations() {
               <label className="check-row" key={step}>
                 <input
                   type="checkbox"
-                  disabled={!editable}
                   checked={packed.includes(step)}
                   onChange={() =>
                     setPacked((items) =>
@@ -595,10 +649,9 @@ function PreviewOperations() {
             {packed.length === checklist.length && (
               <p className="success-note">
                 <CheckCircle size={20} />
-                Dry run trong bản thử đã hoàn tất.
+                Dry run trong phiên này đã hoàn tất.
               </p>
             )}
-            <PreviewHint />
           </section>
           <aside className="surface packing-note">
             <Package size={42} />
@@ -608,7 +661,7 @@ function PreviewOperations() {
               dừng và ghi nhận sự cố.
             </p>
             <Button
-              disabled={!editable}
+              disabled={!unlocked}
               variant="outline"
               onClick={() => setSelection({ kind: "issue" })}
             >

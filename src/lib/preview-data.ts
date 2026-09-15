@@ -53,6 +53,7 @@ export type Stock = {
   buffer: number;
   reorder: number;
   cost: number;
+  updated_at?: string;
 };
 export type Vendor = {
   id: string;
@@ -63,6 +64,7 @@ export type Vendor = {
   moq: number;
   sample: string;
   note: string;
+  updated_at?: string;
 };
 export type Issue = {
   id: string;
@@ -70,8 +72,10 @@ export type Issue = {
   title: string;
   severity: string;
   owner: string;
+  owner_id?: string | null;
   status: string;
   resolution: string;
+  updated_at?: string;
 };
 export const campaignStates = [
   "draft",

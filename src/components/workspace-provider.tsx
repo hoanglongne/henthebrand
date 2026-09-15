@@ -106,9 +106,17 @@ export function WorkspaceProvider({
   );
   const content = editable ? contentDraft : (initial.content ?? []);
   const setContent = setContentDraft;
-  const [stock, setStock] = useState(editable ? demoStock : []);
-  const [vendors, setVendors] = useState(editable ? demoVendors : []);
-  const [issues, setIssues] = useState(editable ? demoIssues : []);
+  const [stockDraft, setStockDraft] = useState(editable ? demoStock : []);
+  const stock = editable ? stockDraft : (initial.stock ?? []);
+  const setStock = setStockDraft;
+  const [vendorsDraft, setVendorsDraft] = useState(
+    editable ? demoVendors : [],
+  );
+  const vendors = editable ? vendorsDraft : (initial.vendors ?? []);
+  const setVendors = setVendorsDraft;
+  const [issuesDraft, setIssuesDraft] = useState(editable ? demoIssues : []);
+  const issues = editable ? issuesDraft : (initial.issues ?? []);
+  const setIssues = setIssuesDraft;
   const [extras, setExtras] = useState<Record<string, TaskExtras>>({});
   const [activity, setActivity] = useState<string[]>([]);
   const [checkins, setCheckins] = useState<string[]>([]);

@@ -76,6 +76,9 @@ export const preview: Snapshot = {
   startDate: previewStart,
   campaigns: [],
   content: [],
+  stock: [],
+  vendors: [],
+  issues: [],
   members: [
     { name: "Founder / Dev", role: "Sản phẩm & kỹ thuật", capacity: 100 },
     { name: "Ops", role: "Vận hành & đối tác", capacity: 100 },

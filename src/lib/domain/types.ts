@@ -1,4 +1,4 @@
-import type { Campaign, ContentItem } from "@/lib/preview-data";
+import type { Campaign, ContentItem, Stock, Vendor, Issue } from "@/lib/preview-data";
 export const statuses = [
   "backlog",
   "ready",
@@ -78,6 +78,7 @@ export type Snapshot = {
   catalogReady?: boolean;
   campaignsReady?: boolean;
   contentReady?: boolean;
+  operationsReady?: boolean;
   mode: "preview" | "connected";
   name: string;
   roles: string[];
@@ -86,6 +87,9 @@ export type Snapshot = {
   milestones: Milestone[];
   campaigns: Campaign[];
   content: ContentItem[];
+  stock: Stock[];
+  vendors: Vendor[];
+  issues: Issue[];
   startDate: string;
   members: {
     id?: string;

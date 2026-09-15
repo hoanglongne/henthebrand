@@ -29,6 +29,9 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
   const { data: catalogVersion } = await client.rpc("admin_catalog_version");
   const { data: campaignVersion } = await client.rpc("admin_campaign_version");
   const { data: contentVersion } = await client.rpc("admin_content_version");
+  const { data: operationsVersion } = await client.rpc(
+    "admin_operations_version",
+  );
   const results = await Promise.all([
     client.from("admin_workspaces").select("*").eq("id", workspace).single(),
     (async () => {
@@ -80,11 +83,37 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       .select("*")
       .eq("workspace_id", workspace)
       .order("created_at", { ascending: false }),
+    client
+      .from("admin_stock_items")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("name"),
+    client
+      .from("admin_vendors")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("name"),
+    client
+      .from("admin_order_issues")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("created_at", { ascending: false }),
   ]);
   if (results.some((r) => r.error))
     throw new Error("Không thể tải dữ liệu HẸN. Vui lòng thử lại.");
-  const [ws, tasks, products, milestones, members, campaigns, readiness, content] =
-    results;
+  const [
+    ws,
+    tasks,
+    products,
+    milestones,
+    members,
+    campaigns,
+    readiness,
+    content,
+    stock,
+    vendors,
+    issues,
+  ] = results;
   return {
     mode: "connected",
     workspaceId: workspace,
@@ -93,6 +122,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     catalogReady: catalogVersion === 1,
     campaignsReady: campaignVersion === 1,
     contentReady: contentVersion === 1,
+    operationsReady: operationsVersion === 1,
     name: ws.data.name,
     startDate: ws.data.start_date,
     roles: membership.roles,
@@ -159,6 +189,42 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       url: c.asset_url ?? "",
       learning: c.learning,
       updated_at: c.updated_at,
+    })),
+    stock: (stock.data ?? []).map((s) => ({
+      id: s.id,
+      code: s.code,
+      name: s.name,
+      category: s.category,
+      onHand: s.on_hand,
+      reserved: s.reserved,
+      buffer: s.buffer,
+      reorder: s.reorder,
+      cost: s.cost,
+      updated_at: s.updated_at,
+    })),
+    vendors: (vendors.data ?? []).map((v) => ({
+      id: v.id,
+      name: v.name,
+      category: v.category,
+      contact: v.contact,
+      lead: v.lead_time_days,
+      moq: v.moq,
+      sample: v.sample_status,
+      note: v.note,
+      updated_at: v.updated_at,
+    })),
+    issues: (issues.data ?? []).map((i) => ({
+      id: i.id,
+      ref: i.external_ref,
+      title: i.title,
+      severity: i.severity,
+      owner:
+        members.data?.find((m) => m.user_id === i.owner_id)?.display_name ??
+        "Chưa phân công",
+      owner_id: i.owner_id,
+      status: i.status,
+      resolution: i.resolution,
+      updated_at: i.updated_at,
     })),
     members: (members.data ?? []).map((m) => ({
       id: m.user_id,
