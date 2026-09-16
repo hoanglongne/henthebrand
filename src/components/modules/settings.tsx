@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   ShieldCheck,
@@ -14,7 +15,12 @@ import {
   Eye,
   Compass,
   LockSimple,
+  CheckCircle,
 } from "@phosphor-icons/react";
+import {
+  updateWorkspaceSettings,
+  mutateMember,
+} from "@/app/actions/settings";
 import { useWorkspace } from "../workspace-provider";
 import {
   PageHeading,
@@ -638,6 +644,432 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
     },
   ],
 };
+function useSettingsMutation() {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  function run(
+    action: () => Promise<{ ok: boolean; message?: string }>,
+    onSuccess?: () => void,
+  ) {
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await action();
+        if (!result.ok) {
+          setError(result.message ?? "Không lưu được dữ liệu.");
+          return;
+        }
+        onSuccess?.();
+        router.refresh();
+      } catch {
+        setError(
+          "Kết nối bị gián đoạn. Tải lại để kiểm tra dữ liệu trước khi thử lại.",
+        );
+      }
+    });
+  }
+  return { run, pending, error, setError };
+}
+function ConnectedWorkspacePanel() {
+  const { data } = useWorkspace();
+  const { run, pending, error } = useSettingsMutation();
+  const [saved, setSaved] = useState(false);
+  const founder = data.roles.includes("founder");
+  const unlocked = !!data.settingsReady && founder;
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    setSaved(false);
+    run(
+      () =>
+        updateWorkspaceSettings({
+          workspaceId: data.workspaceId,
+          expected: data.workspaceUpdatedAt,
+          payload: {
+            name: String(f.get("name") || "").trim(),
+            start_date: String(f.get("start") || ""),
+          },
+        }),
+      () => setSaved(true),
+    );
+  }
+  return (
+    <div className="settings-layout">
+      <section className="surface">
+        <h2>Thông tin chung</h2>
+        <form className="form-stack" onSubmit={submit}>
+          <fieldset disabled={pending || !unlocked} className="live-fieldset">
+            <Field label="Tên workspace">
+              <input name="name" required maxLength={120} defaultValue={data.name} />
+            </Field>
+            <div className="form-grid">
+              <Field label="Ngày bắt đầu roadmap">
+                <input
+                  name="start"
+                  type="date"
+                  required
+                  defaultValue={data.startDate}
+                />
+              </Field>
+              <Field label="Múi giờ">
+                <input readOnly value="Asia/Ho_Chi_Minh" />
+              </Field>
+            </div>
+            <p className="form-hint">
+              Đổi ngày bắt đầu sẽ dời mốc roadmap theo tuần. Deadline task và
+              lịch campaign giữ nguyên để đội rà soát riêng.
+            </p>
+            {!founder && (
+              <p className="notice">Chỉ Founder được chỉnh thông tin workspace.</p>
+            )}
+            {error && (
+              <p className="error-message" role="alert">
+                {error}
+              </p>
+            )}
+            {saved && !error && (
+              <p className="success-note">
+                <CheckCircle size={18} />Đã lưu vào workspace.
+              </p>
+            )}
+            <Button type="submit" disabled={!unlocked}>
+              {pending ? "Đang lưu…" : "Lưu thay đổi"}
+            </Button>
+          </fieldset>
+        </form>
+      </section>
+      <aside>
+        <section className="surface connection-card">
+          <PlugsConnected size={29} />
+          <h2>Nguồn dữ liệu</h2>
+          <Badge tone="green">Đã kết nối Supabase</Badge>
+          <p>
+            Mọi thay đổi ở đây ghi thẳng vào database và được lưu vào nhật ký
+            hoạt động.
+          </p>
+          <Link href="/login" className="text-link">
+            Trang đăng nhập <ArrowUpRight size={17} />
+          </Link>
+        </section>
+        <section className="surface">
+          <h2>Nguyên tắc của đội</h2>
+          <ul className="principle-list">
+            <li>1 sản phẩm đang build</li>
+            <li>1 sản phẩm đang discovery/design</li>
+            <li>1 campaign chính đang chạy</li>
+            <li>Tối đa 2 việc đang làm/người</li>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  );
+}
+type MemberDraft =
+  | { kind: "invite" }
+  | { kind: "member"; id: string }
+  | { kind: "pending"; id: string };
+function ConnectedTeamPanel() {
+  const { data } = useWorkspace();
+  const { run, pending, error, setError } = useSettingsMutation();
+  const [draft, setDraft] = useState<MemberDraft | null>(null);
+  const [roleSelection, setRoleSelection] = useState<string[]>([]);
+  const founder = data.roles.includes("founder");
+  const unlocked = !!data.settingsReady && founder;
+  const pendingMembers = data.pendingMembers ?? [];
+  const member =
+    draft?.kind === "member"
+      ? data.members.find((m) => m.id === draft.id)
+      : undefined;
+  const invite =
+    draft?.kind === "pending"
+      ? pendingMembers.find((p) => p.id === draft.id)
+      : undefined;
+  function open(next: MemberDraft, roles: string[]) {
+    setDraft(next);
+    setRoleSelection(roles);
+    setError("");
+  }
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!draft) return;
+    const f = new FormData(e.currentTarget);
+    if (!roleSelection.length) {
+      setError("Chọn ít nhất một vai trò.");
+      return;
+    }
+    const base = {
+      display_name: String(f.get("name") || "").trim(),
+      roles: roleSelection,
+      capacity_percent: Number(f.get("capacity") || 100),
+    };
+    const command =
+      draft.kind === "invite"
+        ? {
+            targetId: null,
+            expected: null,
+            operation: "invite" as const,
+            payload: { ...base, email: String(f.get("email") || "").trim() },
+          }
+        : draft.kind === "member"
+          ? {
+              targetId: draft.id,
+              expected: member?.updated_at ?? null,
+              operation: "update" as const,
+              payload: { ...base, active: f.get("active") === "on" },
+            }
+          : {
+              targetId: draft.id,
+              expected: invite?.updated_at ?? null,
+              operation: "pending_update" as const,
+              payload: base,
+            };
+    run(
+      () => mutateMember({ workspaceId: data.workspaceId, ...command }),
+      () => setDraft(null),
+    );
+  }
+  function removeInvite(id: string, expected: string) {
+    run(() =>
+      mutateMember({
+        workspaceId: data.workspaceId,
+        targetId: id,
+        expected,
+        operation: "pending_remove",
+        payload: {},
+      }),
+    );
+  }
+  return (
+    <>
+      <div className="section-heading">
+        <div>
+          <h2>Cùng làm, rõ vai</h2>
+          <p className="muted small">
+            Một người có thể giữ nhiều vai trò. Capacity là phần thời gian dành
+            cho HẸN.
+          </p>
+        </div>
+        <Button disabled={!unlocked || pending} onClick={() => open({ kind: "invite" }, ["viewer"])}>
+          <Plus size={17} />
+          Thêm thành viên
+        </Button>
+      </div>
+      {!data.settingsReady && (
+        <p className="notice">
+          Cần hoàn tất bước thiết lập Settings để bật quản lý thành viên.
+        </p>
+      )}
+      {data.settingsReady && !founder && (
+        <p className="notice">
+          Chỉ Founder được thêm thành viên và đổi vai trò. Bạn vẫn xem được đội
+          hình hiện tại.
+        </p>
+      )}
+      {error && (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Thành viên</th>
+              <th>Vai trò</th>
+              <th>Capacity</th>
+              <th>Đang làm</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {data.members.map((m, i) => (
+              <tr key={m.id ?? m.name}>
+                <td>
+                  <div className="person-cell">
+                    <span className={`avatar avatar-${i % 4}`}>
+                      {m.name.charAt(0)}
+                    </span>
+                    <div>
+                      <strong>{m.name}</strong>
+                      {m.active === false && (
+                        <small className="muted"> · đã tắt</small>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td>{m.role}</td>
+                <td>{m.capacity}%</td>
+                <td>
+                  {
+                    data.tasks.filter(
+                      (t) => t.owner_id === m.id && t.status === "in_progress",
+                    ).length
+                  }
+                  /2
+                </td>
+                <td>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!unlocked || pending}
+                    onClick={() =>
+                      open({ kind: "member", id: m.id! }, m.roles ?? [])
+                    }
+                  >
+                    Chỉnh sửa
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {pendingMembers.length > 0 && (
+        <section className="surface">
+          <div className="section-heading">
+            <div>
+              <h2>Đang chờ đăng nhập lần đầu</h2>
+              <p className="muted small">
+                Vai trò đã được giữ sẵn. Người này chỉ cần đăng nhập là tự vào
+                workspace.
+              </p>
+            </div>
+          </div>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Tên hiển thị</th>
+                  <th>Vai trò</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMembers.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.email}</td>
+                    <td>{p.name}</td>
+                    <td>{p.roles.join(" · ")}</td>
+                    <td>
+                      <div className="button-row">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!unlocked || pending}
+                          onClick={() => open({ kind: "pending", id: p.id }, p.roles)}
+                        >
+                          Sửa
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!unlocked || pending}
+                          onClick={() => removeInvite(p.id, p.updated_at)}
+                        >
+                          Gỡ
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+      <p className="notice">
+        Người mới cần có sẵn tài khoản trong Supabase Auth (Founder tạo ở
+        Dashboard, không cần chạy SQL). Sau đó thêm email vào đây kèm vai trò —
+        họ đăng nhập lần đầu là tự vào đúng workspace.
+      </p>
+      <Modal
+        open={draft !== null}
+        onClose={() => setDraft(null)}
+        title={
+          draft?.kind === "invite"
+            ? "Thêm thành viên"
+            : draft?.kind === "pending"
+              ? "Sửa lời mời"
+              : "Điều chỉnh vai trò"
+        }
+      >
+        <form className="form-stack" onSubmit={submit}>
+          <fieldset disabled={pending} className="live-fieldset">
+            {draft?.kind === "invite" && (
+              <Field
+                label="Email"
+                hint="Email trùng với tài khoản Supabase Auth của người đó."
+              >
+                <input name="email" type="email" required maxLength={200} />
+              </Field>
+            )}
+            <Field label="Tên hiển thị">
+              <input
+                name="name"
+                required
+                maxLength={100}
+                defaultValue={member?.name ?? invite?.name ?? ""}
+              />
+            </Field>
+            <fieldset className="role-options">
+              <legend>Vai trò (chọn nhiều)</legend>
+              {systemRoles.map((r) => (
+                <label className="inline-check" key={r.key}>
+                  <input
+                    type="checkbox"
+                    checked={roleSelection.includes(r.key)}
+                    onChange={() =>
+                      setRoleSelection((items) =>
+                        items.includes(r.key)
+                          ? items.filter((v) => v !== r.key)
+                          : [...items, r.key],
+                      )
+                    }
+                  />
+                  {r.label}
+                </label>
+              ))}
+            </fieldset>
+            <Field label="Capacity (%)">
+              <input
+                name="capacity"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                required
+                defaultValue={member?.capacity ?? invite?.capacity ?? 100}
+              />
+            </Field>
+            {draft?.kind === "member" && (
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  name="active"
+                  defaultChecked={member?.active !== false}
+                />
+                Đang hoạt động (bỏ chọn để tạm tắt quyền truy cập)
+              </label>
+            )}
+            {error && (
+              <p className="error-message" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="button-row">
+              <Button type="button" variant="outline" onClick={() => setDraft(null)}>
+                Hủy
+              </Button>
+              <Button type="submit">{pending ? "Đang lưu…" : "Lưu"}</Button>
+            </div>
+          </fieldset>
+        </form>
+      </Modal>
+    </>
+  );
+}
 function Onboarding() {
   const [role, setRole] = useState<RoleKey>("founder");
   const active = systemRoles.find((r) => r.key === role)!;
@@ -798,6 +1230,9 @@ export function Settings() {
       {tab === "onboarding" ? (
         <Onboarding />
       ) : tab === "workspace" ? (
+        data.mode === "connected" ? (
+          <ConnectedWorkspacePanel />
+        ) : (
         <div className="settings-layout">
           <section className="surface">
             <h2>Thông tin chung</h2>
@@ -861,7 +1296,11 @@ export function Settings() {
             </section>
           </aside>
         </div>
+        )
       ) : tab === "team" ? (
+        data.mode === "connected" ? (
+          <ConnectedTeamPanel />
+        ) : (
         <>
           <div className="section-heading">
             <div>
@@ -929,6 +1368,7 @@ export function Settings() {
             đăng nhập hoặc gửi lời mời email.
           </p>
         </>
+        )
       ) : (
         <>
           <section className="surface">

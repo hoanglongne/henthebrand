@@ -17,6 +17,7 @@ export function Today() {
     useWorkspace();
   const [checkin, setCheckin] = useState(false);
   const [member, setMember] = useState("");
+  const activeMembers = data.members.filter((m) => m.active !== false);
   function submitCheckin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!editable) return;
@@ -124,7 +125,7 @@ export function Today() {
               onChange={(e) => setMember(e.target.value)}
             >
               <option value="">Cả đội</option>
-              {data.members.map((m) => (
+              {activeMembers.map((m) => (
                 <option key={m.name}>{m.name}</option>
               ))}
             </select>
@@ -144,7 +145,7 @@ export function Today() {
             <h2>Nhịp của đội</h2>
             <span className="small muted">WIP ≤ 2</span>
           </div>
-          {data.members.map((member, i) => {
+          {activeMembers.map((member, i) => {
             const count = data.tasks.filter(
               (t) => t.owner === member.name && t.status === "in_progress",
             ).length;
@@ -257,7 +258,7 @@ export function Today() {
         <form className="form-stack" onSubmit={submitCheckin}>
           <Field label="Thành viên">
             <select name="owner">
-              {data.members.map((m) => (
+              {activeMembers.map((m) => (
                 <option key={m.name}>{m.name}</option>
               ))}
             </select>

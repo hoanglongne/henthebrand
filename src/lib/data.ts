@@ -12,17 +12,25 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     error: authError,
   } = await client.auth.getUser();
   if (authError || !user) redirect("/login");
-  const { data: membership, error: membershipError } = await client
-    .from("admin_memberships")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("active", true)
-    .limit(1)
-    .maybeSingle();
-  if (membershipError)
+  const read = async () =>
+    client
+      .from("admin_memberships")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+  const first = await read();
+  let membership = first.data;
+  if (first.error)
     throw new Error(
       "Không thể đọc quyền workspace. Kiểm tra migration và kết nối.",
     );
+  if (!membership) {
+    // Người đã được Founder mời trước sẽ nhận vai trò ngay ở lần đăng nhập đầu.
+    const { data: claimed } = await client.rpc("admin_claim_membership");
+    if (claimed?.mode === "claimed") ({ data: membership } = await read());
+  }
   if (!membership) redirect("/login?error=membership");
   const workspace = membership.workspace_id;
   const { data: workVersion } = await client.rpc("admin_work_version");
@@ -32,6 +40,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
   const { data: operationsVersion } = await client.rpc(
     "admin_operations_version",
   );
+  const { data: settingsVersion } = await client.rpc("admin_settings_version");
   const results = await Promise.all([
     client.from("admin_workspaces").select("*").eq("id", workspace).single(),
     (async () => {
@@ -63,11 +72,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       .select("*")
       .eq("workspace_id", workspace)
       .order("start_week"),
-    client
-      .from("admin_memberships")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .eq("active", true),
+    client.from("admin_memberships").select("*").eq("workspace_id", workspace),
     client
       .from("admin_campaigns")
       .select("*")
@@ -98,6 +103,12 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       .select("*")
       .eq("workspace_id", workspace)
       .order("created_at", { ascending: false }),
+    // RLS chỉ trả danh sách chờ cho Founder; role khác nhận mảng rỗng.
+    client
+      .from("admin_pending_members")
+      .select("*")
+      .eq("workspace_id", workspace)
+      .order("created_at"),
   ]);
   if (results.some((r) => r.error))
     throw new Error("Không thể tải dữ liệu HẸN. Vui lòng thử lại.");
@@ -113,6 +124,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     stock,
     vendors,
     issues,
+    pending,
   ] = results;
   return {
     mode: "connected",
@@ -123,6 +135,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     campaignsReady: campaignVersion === 1,
     contentReady: contentVersion === 1,
     operationsReady: operationsVersion === 1,
+    settingsReady: settingsVersion === 1,
     name: ws.data.name,
     startDate: ws.data.start_date,
     roles: membership.roles,
@@ -232,6 +245,17 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       name: m.display_name,
       role: m.roles.join(" · "),
       capacity: m.capacity_percent,
+      active: m.active,
+      updated_at: m.updated_at,
     })),
+    pendingMembers: (pending.data ?? []).map((p) => ({
+      id: p.id,
+      email: p.email,
+      name: p.display_name,
+      roles: p.roles,
+      capacity: p.capacity_percent,
+      updated_at: p.updated_at,
+    })),
+    workspaceUpdatedAt: ws.data.updated_at,
   };
 });

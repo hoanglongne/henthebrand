@@ -280,7 +280,9 @@ function OpsForm({
             <Field label="Người xử lý">
               <select name="owner_id" defaultValue={selection.item?.owner_id ?? ""}>
                 <option value="">Chưa phân công</option>
-                {data.members.map((m) => (
+                {data.members
+                  .filter((m) => m.active !== false)
+                  .map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
                   </option>

@@ -177,7 +177,9 @@ export function ConnectedTimeline() {
               onChange={(e) => setOwner(e.target.value)}
             >
               <option value="">Tất cả thành viên</option>
-              {data.members.map((m) => (
+              {data.members
+                .filter((m) => m.active !== false)
+                .map((m) => (
                 <option key={m.name}>{m.name}</option>
               ))}
             </select>

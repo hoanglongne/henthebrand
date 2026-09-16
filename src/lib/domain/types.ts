@@ -79,6 +79,7 @@ export type Snapshot = {
   campaignsReady?: boolean;
   contentReady?: boolean;
   operationsReady?: boolean;
+  settingsReady?: boolean;
   mode: "preview" | "connected";
   name: string;
   roles: string[];
@@ -97,5 +98,16 @@ export type Snapshot = {
     name: string;
     role: string;
     capacity: number;
+    active?: boolean;
+    updated_at?: string;
   }[];
+  pendingMembers?: {
+    id: string;
+    email: string;
+    name: string;
+    roles: string[];
+    capacity: number;
+    updated_at: string;
+  }[];
+  workspaceUpdatedAt?: string;
 };

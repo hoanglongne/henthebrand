@@ -126,7 +126,9 @@ function CampaignForm({
           <Field label="Người phụ trách">
             <select name="owner_id" defaultValue={campaign?.owner_id ?? ""}>
               <option value="">Chưa phân công</option>
-              {data.members.map((m) => (
+              {data.members
+                .filter((m) => m.active !== false)
+                .map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
