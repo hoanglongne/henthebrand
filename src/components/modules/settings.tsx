@@ -10,6 +10,7 @@ import {
   Wrench,
   Cube,
   PenNib,
+  Rocket,
   Eye,
 } from "@phosphor-icons/react";
 import { useWorkspace } from "../workspace-provider";
@@ -296,6 +297,44 @@ const roleDetails: Record<
     },
   ],
 };
+const onboardingSteps: Record<RoleKey, string[]> = {
+  founder: [
+    "Đăng nhập tại /login bằng email đã được cấp quyền Founder.",
+    "Vào Products, đưa 1 ý tưởng vào Discovery/Design đầu tiên — chỉ được 1 sản phẩm ở Discovery/Design cùng lúc.",
+    "Vào Work, tạo task đầu tiên: gán owner, approver, hạn hoàn thành và Definition of Done.",
+    "Khi sản phẩm sẵn sàng, dùng “Chuyển giai đoạn” để đưa sang Build — chỉ Founder làm được bước này.",
+    "Khi cần mở campaign gấp dù chưa đủ readiness, hoặc vượt giới hạn 2 việc/người, luôn ghi rõ lý do — mọi override đều lưu vào nhật ký hoạt động.",
+    "Thêm thành viên mới: hiện chưa có nút trong app, xem mục “Thêm thành viên mới” bên dưới.",
+  ],
+  ops: [
+    "Đăng nhập, vào Work xem các task đang ở Backlog cần lên kế hoạch.",
+    "Vào Timeline, rà lại roadmap 24 tuần — bạn có toàn quyền chỉnh mốc, ngang Founder.",
+    "Vào Operations, thêm SKU đầu tiên vào Tồn kho và thêm một đối tác cung ứng.",
+    "Vào Campaigns: khi một campaign đã tick đủ readiness, bạn bấm “Kiểm tra mở bán” là mở được luôn, không cần chờ Founder.",
+    "Vào Content Studio, tạo hoặc lên lịch một nội dung.",
+  ],
+  product_designer: [
+    "Đăng nhập, vào Products xem sổ ý tưởng hiện có.",
+    "Bấm “Thêm ý tưởng”, điền moment / đối tượng / lời hứa sản phẩm.",
+    "Mở một sản phẩm, vào tab “Tài liệu & bằng chứng”, gắn một ghi chú phỏng vấn hoặc nghiên cứu.",
+    "Khi đủ căn cứ, dùng “Chuyển giai đoạn” để đưa sản phẩm tới Discovery → Design → Ready for build.",
+    "Vào Work, tạo task nghiên cứu/thiết kế và tự nhận làm owner.",
+    "Timeline, Campaigns, Content Studio, Operations bạn chỉ xem được — cần đổi gì, nhờ đúng người theo bảng quyền ở trên.",
+  ],
+  brand_designer: [
+    "Đăng nhập, vào Content Studio, tạo một ý tưởng nội dung đầu tiên (hook, format, kênh đăng).",
+    "Vào Campaigns, mở một campaign, sang tab readiness và tick các mục thuộc trách nhiệm của bạn (ví dụ “Asset cuối đã duyệt”).",
+    "Cần sửa brief campaign thì dùng nút “Chỉnh sửa brief” ngay trong trang chi tiết.",
+    "Muốn mở hoặc kết thúc campaign, nhờ Founder hoặc Ops — hai nút đó khoá với Brand Designer.",
+    "Vào Work, tạo hoặc nhận task liên quan tới nội dung và asset.",
+  ],
+  viewer: [
+    "Đăng nhập, vào Today để nắm tình hình chung của workspace.",
+    "Xem qua Work, Products, Timeline, Campaigns, Content Studio, Operations — toàn bộ đều chỉ đọc.",
+    "Không thấy nút tạo/sửa nào hoạt động là đúng thiết kế, không phải lỗi hiển thị.",
+    "Cần thay đổi điều gì, liên hệ người giữ role phù hợp theo ma trận ở trên.",
+  ],
+};
 export function Settings() {
   const { data, setData, editable, record } = useWorkspace();
   const [tab, setTab] = useState("workspace");
@@ -566,7 +605,7 @@ export function Settings() {
             </p>
           </section>
           <section className="surface">
-            <h2>Chi tiết theo role</h2>
+            <h2>Chọn role để xem hướng dẫn</h2>
             <div className="role-switch" aria-label="Chọn role">
               {systemRoles.map((r) => (
                 <button
@@ -580,6 +619,23 @@ export function Settings() {
                 </button>
               ))}
             </div>
+          </section>
+          <section className="surface">
+            <div className="section-heading">
+              <h2>
+                Lần đầu dùng? Bắt đầu từ đây nếu bạn là{" "}
+                {systemRoles.find((r) => r.key === permRole)?.label}
+              </h2>
+              <Rocket size={22} />
+            </div>
+            <ol className="onboarding-steps">
+              {onboardingSteps[permRole].map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </section>
+          <section className="surface">
+            <h2>Chi tiết quyền theo module</h2>
             <div className="permission-cards">
               {roleDetails[permRole].map((row) => (
                 <article className="permission-card" key={row.module}>
