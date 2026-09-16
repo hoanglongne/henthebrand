@@ -3499,3 +3499,41 @@ textarea:disabled {
 .compare-table td:first-child {
   width: 30%;
 }
+.draggable-card {
+  cursor: grab;
+}
+.draggable-card.is-dragging {
+  opacity: 0.45;
+}
+.content-pipeline section.column-drop {
+  outline: 2px dashed var(--coral);
+  outline-offset: 4px;
+  border-radius: 9px;
+}
+.content-gap-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  border-radius: 9px;
+  background: #f8e3dd;
+  color: #7c3029;
+}
+.content-gap-alert strong {
+  display: block;
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+.content-gap-alert ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.content-gap-alert li {
+  margin: 3px 0;
+}
+.calendar-event small {
+  display: block;
+  opacity: 0.75;
+}

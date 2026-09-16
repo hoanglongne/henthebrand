@@ -9,6 +9,11 @@ import {
   TextT,
   Rows,
   SquaresFour,
+  CalendarBlank,
+  ArrowLeft,
+  ArrowRight,
+  Copy,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import { mutateContent } from "@/app/actions/content";
 import { type ContentCommand } from "@/lib/domain/live-content";
@@ -24,6 +29,22 @@ import {
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { contentStates, shortDate, type ContentItem } from "@/lib/preview-data";
+import { campaignContentGaps } from "@/lib/domain/rules";
+const gatedStates = ["Scheduled", "Published", "Learned"];
+function payloadFrom(item: ContentItem, status = item.status) {
+  return {
+    title: item.title,
+    hook: item.hook,
+    format: item.format,
+    channel: item.channel,
+    status,
+    owner_id: item.owner_id ?? null,
+    campaign_id: item.campaign || null,
+    publish_date: item.publish || null,
+    asset_url: item.url || null,
+    learning: item.learning,
+  };
+}
 const contributors = ["founder", "ops", "brand_designer"];
 function useContentMutation(item?: ContentItem) {
   const { data } = useWorkspace();
@@ -186,10 +207,121 @@ function ContentForm({
           <Button type="button" variant="outline" onClick={onClose}>
             Hủy
           </Button>
+          {item && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                run(
+                  {
+                    operation: "create",
+                    payload: {
+                      ...payloadFrom(item, "Idea"),
+                      title: `${item.title} (bản sao)`,
+                      publish_date: null,
+                      asset_url: null,
+                      learning: "",
+                    },
+                  } as ContentCommand,
+                  onClose,
+                )
+              }
+            >
+              <Copy size={16} />
+              Nhân bản
+            </Button>
+          )}
           <Button type="submit">{pending ? "Đang lưu…" : "Lưu nội dung"}</Button>
         </div>
       </fieldset>
     </form>
+  );
+}
+function ContentCalendar({
+  items,
+  month,
+  onMonth,
+  onOpen,
+}: {
+  items: ContentItem[];
+  month: string;
+  onMonth: (value: string) => void;
+  onOpen: (item: ContentItem) => void;
+}) {
+  const date = new Date(`${month}-01T12:00:00Z`);
+  const days = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const offset = (date.getUTCDay() + 6) % 7;
+  const unscheduled = items.filter((c) => !c.publish);
+  function shift(n: number) {
+    const d = new Date(date);
+    d.setUTCMonth(d.getUTCMonth() + n);
+    onMonth(d.toISOString().slice(0, 7));
+  }
+  return (
+    <section className="calendar-surface">
+      <div className="calendar-toolbar">
+        <h2>
+          Tháng {date.getUTCMonth() + 1}, {date.getUTCFullYear()}
+        </h2>
+        <div className="button-row">
+          <Button variant="outline" onClick={() => shift(-1)} aria-label="Tháng trước">
+            <ArrowLeft size={17} />
+          </Button>
+          <Button variant="outline" onClick={() => shift(1)} aria-label="Tháng sau">
+            <ArrowRight size={17} />
+          </Button>
+        </div>
+      </div>
+      <div className="calendar-scroll">
+        <div className="calendar-grid">
+          {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"].map(
+            (d) => (
+              <div className="calendar-day-label" key={d}>
+                {d}
+              </div>
+            ),
+          )}
+          {Array.from({ length: Math.ceil((days + offset) / 7) * 7 }, (_, i) => {
+            const n = i - offset + 1;
+            const current = `${month}-${String(n).padStart(2, "0")}`;
+            return (
+              <div
+                className={`calendar-cell ${n < 1 || n > days ? "outside" : ""}`}
+                key={i}
+              >
+                {n >= 1 && n <= days && (
+                  <>
+                    <span>{n}</span>
+                    {items
+                      .filter((c) => c.publish === current)
+                      .map((c) => (
+                        <button
+                          className="calendar-event"
+                          key={c.id}
+                          onClick={() => onOpen(c)}
+                        >
+                          {c.title}
+                          <small>
+                            {c.channel} · {c.status}
+                          </small>
+                        </button>
+                      ))}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="form-hint">
+        Lịch hiển thị ngày đăng dự kiến.{" "}
+        {unscheduled.length > 0
+          ? `${unscheduled.length} nội dung chưa đặt ngày đăng nên không xuất hiện ở đây.`
+          : "Tất cả nội dung đang hiển thị đều đã có ngày đăng."}
+      </p>
+    </section>
   );
 }
 export function ConnectedContentStudio() {
@@ -200,10 +332,32 @@ export function ConnectedContentStudio() {
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState("");
   const [view, setView] = useState("cards");
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState("");
   const [selection, setSelection] = useState<ContentItem | null | undefined>(
     undefined,
   );
   const contributor = data.roles.some((r) => contributors.includes(r));
+  const canMove = !!data.contentReady && contributor;
+  const { run: runMove, pending: moving, error: moveActionError } =
+    useContentMutation(content.find((c) => c.id === dragging));
+  const gaps = campaignContentGaps(campaigns, content);
+  function moveTo(item: ContentItem, status: string) {
+    setMoveError("");
+    if (item.status === status) return;
+    if (gatedStates.includes(status) && (!item.publish || !item.url)) {
+      setMoveError(
+        `Cần ngày đăng và link asset trước khi chuyển “${item.title}” sang ${status}.`,
+      );
+      return;
+    }
+    runMove({
+      operation: "update",
+      payload: payloadFrom(item, status),
+    } as ContentCommand);
+  }
   const visible = content.filter(
     (c) =>
       (stage === "all" || c.status === stage) &&
@@ -285,6 +439,30 @@ export function ConnectedContentStudio() {
           chỉnh sửa.
         </p>
       )}
+      {gaps.length > 0 && (
+        <div className="content-gap-alert">
+          <WarningCircle size={22} />
+          <div>
+            <strong>Campaign sắp mở nhưng nội dung chưa sẵn sàng</strong>
+            <ul>
+              {gaps.map((gap) => (
+                <li key={gap.id}>
+                  {gap.name} mở sau {gap.days} ngày —{" "}
+                  {gap.total === 0
+                    ? "chưa có nội dung nào gắn vào campaign này"
+                    : `mới ${gap.ready}/${gap.total} nội dung đã lên lịch hoặc xuất bản`}
+                  .
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {(moveError || moveActionError) && (
+        <p className="error-message" role="alert">
+          {moveError || moveActionError}
+        </p>
+      )}
       <Tabs
         value={stage}
         onChange={setStage}
@@ -328,6 +506,13 @@ export function ConnectedContentStudio() {
           >
             <Rows size={20} />
           </button>
+          <button
+            aria-label="Lịch xuất bản"
+            aria-pressed={view === "calendar"}
+            onClick={() => setView("calendar")}
+          >
+            <CalendarBlank size={20} />
+          </button>
         </div>
       </div>
       {!visible.length ? (
@@ -345,18 +530,69 @@ export function ConnectedContentStudio() {
         </Empty>
       ) : view === "cards" ? (
         <div className="content-grid">{visible.map(card)}</div>
+      ) : view === "pipeline" ? (
+        <>
+          {canMove && (
+            <p className="form-hint">
+              Kéo thẻ sang cột khác để đổi trạng thái. Cột Scheduled,
+              Published và Learned cần có ngày đăng và link asset.
+            </p>
+          )}
+          <div className="content-pipeline">
+            {contentStates.map((s) => (
+              <section
+                key={s}
+                className={dropTarget === s ? "column-drop" : undefined}
+                onDragOver={(e) => {
+                  if (!canMove || !dragging) return;
+                  e.preventDefault();
+                  setDropTarget(s);
+                }}
+                onDragLeave={() => setDropTarget((v) => (v === s ? null : v))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDropTarget(null);
+                  const id = e.dataTransfer.getData("text/plain") || dragging;
+                  const item = content.find((c) => c.id === id);
+                  setDragging(null);
+                  if (item) moveTo(item, s);
+                }}
+              >
+                <h3>
+                  {s}
+                  <span>{visible.filter((c) => c.status === s).length}</span>
+                </h3>
+                {visible
+                  .filter((c) => c.status === s)
+                  .map((c, i) => (
+                    <div
+                      key={c.id}
+                      draggable={canMove && !moving}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", c.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragging(c.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setDropTarget(null);
+                      }}
+                      className={`draggable-card${dragging === c.id ? " is-dragging" : ""}`}
+                    >
+                      {card(c, i)}
+                    </div>
+                  ))}
+              </section>
+            ))}
+          </div>
+        </>
       ) : (
-        <div className="content-pipeline">
-          {contentStates.map((s) => (
-            <section key={s}>
-              <h3>
-                {s}
-                <span>{visible.filter((c) => c.status === s).length}</span>
-              </h3>
-              {visible.filter((c) => c.status === s).map((c, i) => card(c, i))}
-            </section>
-          ))}
-        </div>
+        <ContentCalendar
+          items={visible}
+          month={month}
+          onMonth={setMonth}
+          onOpen={setSelection}
+        />
       )}
       <Modal
         open={selection !== undefined}

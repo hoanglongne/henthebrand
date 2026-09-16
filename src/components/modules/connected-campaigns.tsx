@@ -24,7 +24,7 @@ import {
   Empty,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
-import { dayOffset } from "@/lib/domain/rules";
+import { dayOffset, campaignContentGaps } from "@/lib/domain/rules";
 import { campaignLabels, money, shortDate, type Campaign } from "@/lib/preview-data";
 const planners = ["founder", "ops"];
 const contributors = ["founder", "ops", "brand_designer"];
@@ -519,6 +519,7 @@ function LiveCampaign({ campaign }: { campaign: Campaign }) {
   const ready = c.readiness.every((r) => r.done);
   const done = c.readiness.filter((r) => r.done).length;
   const locked = c.status === "live" || c.status === "complete";
+  const contentGap = campaignContentGaps([c], data.content).at(0);
   function launchCampaign(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -573,6 +574,19 @@ function LiveCampaign({ campaign }: { campaign: Campaign }) {
             Tải lại dữ liệu
           </Button>
         </div>
+      )}
+      {contentGap && (
+        <p className="notice">
+          Còn {contentGap.days} ngày tới ngày mở bán mà{" "}
+          {contentGap.total === 0
+            ? "chưa có nội dung nào gắn vào campaign này"
+            : `mới ${contentGap.ready}/${contentGap.total} nội dung đã lên lịch hoặc xuất bản`}
+          . Mở{" "}
+          <Link className="text-link" href="/content">
+            Content Studio
+          </Link>{" "}
+          để chuẩn bị.
+        </p>
       )}
       <div className="summary-strip">
         <div>

@@ -35,3 +35,34 @@ export function dayOffset(start: string, days: number) {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
+export const readyContentStates = ["Scheduled", "Published"];
+// Campaign sắp mở mà nội dung chưa lên lịch/xuất bản là rủi ro đội hay bỏ sót.
+export function campaignContentGaps(
+  campaigns: { id: string; name: string; launch: string; status: string }[],
+  content: { campaign: string; status: string }[],
+  withinDays = 14,
+  today = new Date().toISOString().slice(0, 10),
+) {
+  const limit = dayOffset(today, withinDays);
+  return campaigns
+    .filter(
+      (c) =>
+        !["complete", "cancelled"].includes(c.status) &&
+        c.launch >= today &&
+        c.launch <= limit,
+    )
+    .map((c) => {
+      const linked = content.filter((item) => item.campaign === c.id);
+      const ready = linked.filter((item) =>
+        readyContentStates.includes(item.status),
+      ).length;
+      const days = Math.round(
+        (Date.parse(`${c.launch}T00:00:00Z`) -
+          Date.parse(`${today}T00:00:00Z`)) /
+          86400000,
+      );
+      return { id: c.id, name: c.name, total: linked.length, ready, days };
+    })
+    .filter((row) => row.ready < row.total || row.total === 0)
+    .sort((a, b) => a.days - b.days);
+}
