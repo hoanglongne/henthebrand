@@ -21,7 +21,6 @@ import {
   Field,
   Badge,
   Empty,
-  ModuleBoundary,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { contentStates, shortDate, type ContentItem } from "@/lib/preview-data";
@@ -278,7 +277,6 @@ export function ConnectedContentStudio() {
           <Plus size={17} />Ý tưởng mới
         </Button>
       </PageHeading>
-      <ModuleBoundary />
       {!data.contentReady && (
         <p className="notice">
           Dữ liệu đã kết nối. Cần hoàn tất bước thiết lập Content Studio để bật

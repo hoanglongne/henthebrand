@@ -22,7 +22,6 @@ import {
   Field,
   Badge,
   Empty,
-  ModuleBoundary,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { dayOffset } from "@/lib/domain/rules";
@@ -314,7 +313,6 @@ export function ConnectedCampaigns() {
           Tạo campaign
         </Button>
       </PageHeading>
-      <ModuleBoundary />
       {!data.campaignsReady && (
         <p className="notice">
           Dữ liệu đã kết nối. Cần hoàn tất bước thiết lập Campaigns để bật

@@ -24,7 +24,6 @@ import {
   Field,
   Badge,
   Empty,
-  ModuleBoundary,
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { money, type Stock, type Vendor, type Issue } from "@/lib/preview-data";
@@ -411,7 +410,6 @@ export function ConnectedOperations() {
               : "Thêm vật tư"}
         </Button>
       </PageHeading>
-      <ModuleBoundary />
       {!data.operationsReady && (
         <p className="notice">
           Dữ liệu đã kết nối. Cần hoàn tất bước thiết lập Operations để bật
