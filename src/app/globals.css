@@ -2646,39 +2646,195 @@ textarea:disabled {
   color: var(--muted);
   margin: 4px 0;
 }
-.onboarding-steps {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  counter-reset: step;
+.onboarding-intro {
+  padding: 30px 32px;
+  margin-bottom: 22px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff3e2 0%, var(--cream) 60%);
+  border: 1px solid var(--border);
 }
-.onboarding-steps li {
-  counter-increment: step;
-  display: flex;
-  align-items: flex-start;
+.onboarding-intro .eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  margin: 0 0 8px;
+}
+.onboarding-intro h2 {
+  font-size: 26px;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.onboarding-intro p {
+  font-size: 14px;
+  color: var(--muted);
+  max-width: 60ch;
+  margin: 0;
+}
+.role-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 12px;
-  padding: 12px 0;
+  margin-bottom: 28px;
+}
+.role-picker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: #fffdf8;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.role-picker-card:hover {
+  border-color: var(--primary);
+}
+.role-picker-card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  background: #fff9f4;
+}
+.role-picker-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cream);
+  color: var(--primary);
+}
+.role-picker-card strong {
+  font-size: 14px;
+}
+.role-picker-card span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.onboarding-journey-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  margin-bottom: 22px;
   border-bottom: 1px solid var(--border);
-  font-size: 13.5px;
-  color: var(--foreground);
 }
-.onboarding-steps li:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+.onboarding-journey-head .role-picker-icon {
+  width: 44px;
+  height: 44px;
 }
-.onboarding-steps li::before {
-  content: counter(step);
+.onboarding-journey-head h3 {
+  font-size: 18px;
+  margin: 0 0 3px;
+}
+.onboarding-journey-head p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+.onboarding-phase {
+  margin-bottom: 26px;
+}
+.onboarding-phase:last-child {
+  margin-bottom: 0;
+}
+.onboarding-phase-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+.onboarding-phase-head.tone-blue {
+  background: #e9edff;
+  color: #3d51a3;
+}
+.onboarding-phase-head.tone-coral {
+  background: #f8e3dd;
+  color: #983c36;
+}
+.onboarding-phase-head.tone-amber {
+  background: #f4ebd4;
+  color: #79571d;
+}
+.onboarding-phase-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+.onboarding-step {
+  display: flex;
+  gap: 14px;
+  padding: 10px 0 10px 14px;
+}
+.onboarding-step-index {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
   border-radius: 50%;
-  background: var(--coral);
-  color: #fff;
+  background: var(--foreground);
+  color: var(--cream);
   font-size: 11px;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.onboarding-step strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 3px;
+}
+.onboarding-step p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 6px;
+  max-width: 62ch;
+}
+.onboarding-step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary);
+}
+.onboarding-step-link:hover {
+  text-decoration: underline;
+}
+.onboarding-footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 14px 16px;
+  border-radius: 9px;
+  background: var(--cream);
+  border: 1px solid var(--border);
+}
+.onboarding-footer p {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .onboarding-intro {
+    padding: 22px;
+  }
+  .onboarding-phase-steps {
+    padding-left: 4px;
+  }
 }
 .person-cell {
   display: flex;

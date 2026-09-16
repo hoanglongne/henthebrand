@@ -12,6 +12,8 @@ import {
   PenNib,
   Rocket,
   Eye,
+  Compass,
+  LockSimple,
 } from "@phosphor-icons/react";
 import { useWorkspace } from "../workspace-provider";
 import {
@@ -297,47 +299,424 @@ const roleDetails: Record<
     },
   ],
 };
-const onboardingSteps: Record<RoleKey, string[]> = {
+type OnboardingStep = {
+  title: string;
+  detail: string;
+  href?: string;
+  linkLabel?: string;
+};
+type OnboardingPhase = {
+  key: "orient" | "first" | "limits";
+  label: string;
+  icon: typeof Compass;
+  steps: OnboardingStep[];
+};
+const phaseMeta: Record<
+  OnboardingPhase["key"],
+  { label: string; icon: typeof Compass; tone: string }
+> = {
+  orient: { label: "Làm quen", icon: Compass, tone: "blue" },
+  first: { label: "Việc đầu tiên", icon: Rocket, tone: "coral" },
+  limits: { label: "Giới hạn cần nhớ", icon: LockSimple, tone: "amber" },
+};
+const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
   founder: [
-    "Đăng nhập tại /login bằng email đã được cấp quyền Founder.",
-    "Vào Products, đưa 1 ý tưởng vào Discovery/Design đầu tiên — chỉ được 1 sản phẩm ở Discovery/Design cùng lúc.",
-    "Vào Work, tạo task đầu tiên: gán owner, approver, hạn hoàn thành và Definition of Done.",
-    "Khi sản phẩm sẵn sàng, dùng “Chuyển giai đoạn” để đưa sang Build — chỉ Founder làm được bước này.",
-    "Khi cần mở campaign gấp dù chưa đủ readiness, hoặc vượt giới hạn 2 việc/người, luôn ghi rõ lý do — mọi override đều lưu vào nhật ký hoạt động.",
-    "Thêm thành viên mới: hiện chưa có nút trong app, xem mục “Thêm thành viên mới” bên dưới.",
+    {
+      key: "orient",
+      label: phaseMeta.orient.label,
+      icon: phaseMeta.orient.icon,
+      steps: [
+        {
+          title: "Đăng nhập và xem toàn cảnh",
+          detail:
+            "Đăng nhập tại /login bằng email đã được cấp quyền Founder. Trang Today cho bạn cái nhìn nhanh về task quá hạn, campaign đang chạy và hoạt động gần đây.",
+          href: "/",
+          linkLabel: "Mở Today",
+        },
+        {
+          title: "Rà lại thông tin workspace",
+          detail:
+            "Vào tab Workspace bên cạnh kiểm tra tên và ngày bắt đầu roadmap. Hai trường này hiện chỉ đọc — nhờ kỹ thuật chỉnh trực tiếp trong database nếu cần đổi.",
+        },
+      ],
+    },
+    {
+      key: "first",
+      label: phaseMeta.first.label,
+      icon: phaseMeta.first.icon,
+      steps: [
+        {
+          title: "Đưa một ý tưởng vào Discovery",
+          detail:
+            "Vào Products, chọn một sản phẩm và bấm “Chuyển giai đoạn” để đưa nó sang Discovery. Lưu ý: chỉ một sản phẩm được ở Discovery/Design cùng lúc.",
+          href: "/products",
+          linkLabel: "Mở Products",
+        },
+        {
+          title: "Tạo một task đầy đủ điều kiện",
+          detail:
+            "Vào Work, tạo task đầu tiên: gán owner, approver, hạn hoàn thành và Definition of Done. Thiếu một trong bốn điều này, task sẽ kẹt ở Backlog cho mọi role.",
+          href: "/work",
+          linkLabel: "Mở Work",
+        },
+        {
+          title: "Mở campaign đầu tiên",
+          detail:
+            "Khi readiness của một campaign đã tick đủ, vào Campaigns và bấm “Kiểm tra mở bán” để chuyển nó sang Đang chạy.",
+          href: "/campaigns",
+          linkLabel: "Mở Campaigns",
+        },
+      ],
+    },
+    {
+      key: "limits",
+      label: phaseMeta.limits.label,
+      icon: phaseMeta.limits.icon,
+      steps: [
+        {
+          title: "Override luôn cần một lý do",
+          detail:
+            "Vượt giới hạn 2 việc/người, mở campaign khi readiness chưa đủ, hay chuyển sản phẩm sang Build/Pilot/Live/Learned/Archived — bạn là người duy nhất làm được, nhưng hệ thống luôn bắt ghi lý do và lưu vào nhật ký hoạt động.",
+        },
+        {
+          title: "Thêm thành viên mới cần thao tác thủ công",
+          detail:
+            "App chưa có nút mời thành viên. Cần cấp tài khoản Supabase Auth rồi thêm thủ công vào bảng admin_memberships — xem chi tiết ở tab Vai trò & quyền.",
+        },
+      ],
+    },
   ],
   ops: [
-    "Đăng nhập, vào Work xem các task đang ở Backlog cần lên kế hoạch.",
-    "Vào Timeline, rà lại roadmap 24 tuần — bạn có toàn quyền chỉnh mốc, ngang Founder.",
-    "Vào Operations, thêm SKU đầu tiên vào Tồn kho và thêm một đối tác cung ứng.",
-    "Vào Campaigns: khi một campaign đã tick đủ readiness, bạn bấm “Kiểm tra mở bán” là mở được luôn, không cần chờ Founder.",
-    "Vào Content Studio, tạo hoặc lên lịch một nội dung.",
+    {
+      key: "orient",
+      label: phaseMeta.orient.label,
+      icon: phaseMeta.orient.icon,
+      steps: [
+        {
+          title: "Xem việc đang chờ lên kế hoạch",
+          detail:
+            "Vào Work, lọc theo trạng thái Backlog để thấy những task chưa có owner/hạn hoàn thành cần xử lý trước.",
+          href: "/work",
+          linkLabel: "Mở Work",
+        },
+        {
+          title: "Rà lại roadmap 24 tuần",
+          detail:
+            "Vào Timeline xem các mốc hiện có. Bạn có toàn quyền chỉnh mốc ở đây, ngang với Founder.",
+          href: "/timeline",
+          linkLabel: "Mở Timeline",
+        },
+      ],
+    },
+    {
+      key: "first",
+      label: phaseMeta.first.label,
+      icon: phaseMeta.first.icon,
+      steps: [
+        {
+          title: "Thêm một SKU vào tồn kho",
+          detail:
+            "Vào Operations → tab Tồn kho, bấm “Thêm vật tư” và nhập mã SKU, số lượng thực tế, ngưỡng đặt thêm.",
+          href: "/operations",
+          linkLabel: "Mở Operations",
+        },
+        {
+          title: "Thêm một đối tác cung ứng",
+          detail:
+            "Cũng ở Operations, chuyển sang tab Đối tác & mẫu để ghi lại lead time và trạng thái mẫu của nhà cung cấp.",
+        },
+        {
+          title: "Mở một campaign đã sẵn sàng",
+          detail:
+            "Khi tất cả mục readiness của một campaign đã tick xong, bấm “Kiểm tra mở bán” là mở được ngay — không cần chờ Founder.",
+          href: "/campaigns",
+          linkLabel: "Mở Campaigns",
+        },
+      ],
+    },
+    {
+      key: "limits",
+      label: phaseMeta.limits.label,
+      icon: phaseMeta.limits.icon,
+      steps: [
+        {
+          title: "Không tự override được",
+          detail:
+            "Vượt giới hạn 2 việc/người, hay mở campaign khi readiness chưa đủ — cả hai đều cần Founder, không có ngoại lệ cho Ops.",
+        },
+        {
+          title: "Không đổi được owner/approver sau khi tạo task",
+          detail:
+            "Một khi task đã có owner và approver, chỉ Founder mới đổi lại được hai trường này.",
+        },
+      ],
+    },
   ],
   product_designer: [
-    "Đăng nhập, vào Products xem sổ ý tưởng hiện có.",
-    "Bấm “Thêm ý tưởng”, điền moment / đối tượng / lời hứa sản phẩm.",
-    "Mở một sản phẩm, vào tab “Tài liệu & bằng chứng”, gắn một ghi chú phỏng vấn hoặc nghiên cứu.",
-    "Khi đủ căn cứ, dùng “Chuyển giai đoạn” để đưa sản phẩm tới Discovery → Design → Ready for build.",
-    "Vào Work, tạo task nghiên cứu/thiết kế và tự nhận làm owner.",
-    "Timeline, Campaigns, Content Studio, Operations bạn chỉ xem được — cần đổi gì, nhờ đúng người theo bảng quyền ở trên.",
+    {
+      key: "orient",
+      label: phaseMeta.orient.label,
+      icon: phaseMeta.orient.icon,
+      steps: [
+        {
+          title: "Xem sổ ý tưởng hiện có",
+          detail:
+            "Vào Products để thấy toàn bộ ý tưởng, từ giai đoạn Idea đến Live, cùng số công việc đang gắn với từng sản phẩm.",
+          href: "/products",
+          linkLabel: "Mở Products",
+        },
+        {
+          title: "Xem việc đang mở của đội",
+          detail: "Vào Work để biết ai đang làm gì trước khi nhận việc mới.",
+          href: "/work",
+          linkLabel: "Mở Work",
+        },
+      ],
+    },
+    {
+      key: "first",
+      label: phaseMeta.first.label,
+      icon: phaseMeta.first.icon,
+      steps: [
+        {
+          title: "Ghi lại một ý tưởng mới",
+          detail:
+            "Bấm “Thêm ý tưởng” trong Products, điền moment, đối tượng và lời hứa sản phẩm.",
+        },
+        {
+          title: "Gắn bằng chứng nghiên cứu",
+          detail:
+            "Mở một sản phẩm, sang tab “Tài liệu & bằng chứng”, gắn một ghi chú phỏng vấn hoặc kết quả usability test.",
+        },
+        {
+          title: "Đưa sản phẩm đi tiếp",
+          detail:
+            "Khi đã đủ căn cứ, dùng “Chuyển giai đoạn” để đưa sản phẩm từ Discovery → Design → Ready for build.",
+        },
+        {
+          title: "Tạo task nghiên cứu hoặc thiết kế",
+          detail:
+            "Vào Work, tạo task và tự nhận làm owner — nhớ điền Definition of Done trước khi chuyển khỏi Backlog.",
+          href: "/work",
+          linkLabel: "Mở Work",
+        },
+      ],
+    },
+    {
+      key: "limits",
+      label: phaseMeta.limits.label,
+      icon: phaseMeta.limits.icon,
+      steps: [
+        {
+          title: "Không vào được các giai đoạn quan trọng",
+          detail:
+            "Build, Pilot, Live, Learned, Archived — cả năm giai đoạn này chỉ Founder chuyển được, dù bạn đã đủ căn cứ.",
+        },
+        {
+          title: "Timeline, Campaigns, Content, Operations chỉ để xem",
+          detail:
+            "Bạn thấy toàn bộ dữ liệu ở bốn module này nhưng không có nút tạo/sửa nào hoạt động.",
+        },
+      ],
+    },
   ],
   brand_designer: [
-    "Đăng nhập, vào Content Studio, tạo một ý tưởng nội dung đầu tiên (hook, format, kênh đăng).",
-    "Vào Campaigns, mở một campaign, sang tab readiness và tick các mục thuộc trách nhiệm của bạn (ví dụ “Asset cuối đã duyệt”).",
-    "Cần sửa brief campaign thì dùng nút “Chỉnh sửa brief” ngay trong trang chi tiết.",
-    "Muốn mở hoặc kết thúc campaign, nhờ Founder hoặc Ops — hai nút đó khoá với Brand Designer.",
-    "Vào Work, tạo hoặc nhận task liên quan tới nội dung và asset.",
+    {
+      key: "orient",
+      label: phaseMeta.orient.label,
+      icon: phaseMeta.orient.icon,
+      steps: [
+        {
+          title: "Xem pipeline nội dung",
+          detail:
+            "Vào Content Studio để thấy toàn bộ nội dung theo từng giai đoạn, từ Idea đến Published.",
+          href: "/content",
+          linkLabel: "Mở Content Studio",
+        },
+        {
+          title: "Xem campaign đang chuẩn bị",
+          detail:
+            "Vào Campaigns để biết campaign nào cần asset hoặc brief từ bạn trước ngày mở bán.",
+          href: "/campaigns",
+          linkLabel: "Mở Campaigns",
+        },
+      ],
+    },
+    {
+      key: "first",
+      label: phaseMeta.first.label,
+      icon: phaseMeta.first.icon,
+      steps: [
+        {
+          title: "Tạo một ý tưởng nội dung",
+          detail:
+            "Trong Content Studio, bấm “Ý tưởng mới”, điền hook, chọn format và kênh đăng.",
+        },
+        {
+          title: "Hoàn thành phần readiness của bạn",
+          detail:
+            "Mở một campaign, sang tab readiness và tick các mục thuộc trách nhiệm Brand — ví dụ “Asset cuối đã duyệt”.",
+        },
+        {
+          title: "Cập nhật brief khi cần",
+          detail:
+            "Trong trang chi tiết campaign, dùng nút “Chỉnh sửa brief” để sửa kênh, hook hoặc lịch trình.",
+        },
+      ],
+    },
+    {
+      key: "limits",
+      label: phaseMeta.limits.label,
+      icon: phaseMeta.limits.icon,
+      steps: [
+        {
+          title: "Không mở hoặc kết thúc được campaign",
+          detail:
+            "Hai nút “Kiểm tra mở bán” và “Kết thúc campaign” chỉ hoạt động với Founder hoặc Ops, kể cả khi readiness đã đủ.",
+        },
+        {
+          title: "Timeline và Operations chỉ để xem",
+          detail:
+            "Bạn xem được roadmap và tồn kho nhưng không chỉnh sửa được ở hai module này.",
+        },
+      ],
+    },
   ],
   viewer: [
-    "Đăng nhập, vào Today để nắm tình hình chung của workspace.",
-    "Xem qua Work, Products, Timeline, Campaigns, Content Studio, Operations — toàn bộ đều chỉ đọc.",
-    "Không thấy nút tạo/sửa nào hoạt động là đúng thiết kế, không phải lỗi hiển thị.",
-    "Cần thay đổi điều gì, liên hệ người giữ role phù hợp theo ma trận ở trên.",
+    {
+      key: "orient",
+      label: phaseMeta.orient.label,
+      icon: phaseMeta.orient.icon,
+      steps: [
+        {
+          title: "Bắt đầu từ Today",
+          detail:
+            "Xem nhanh task quá hạn, campaign đang chạy và hoạt động gần đây của cả đội.",
+          href: "/",
+          linkLabel: "Mở Today",
+        },
+        {
+          title: "Duyệt qua từng module",
+          detail:
+            "Work, Products, Timeline, Campaigns, Content Studio, Operations — bạn đọc được toàn bộ dữ liệu thật của workspace.",
+        },
+      ],
+    },
+    {
+      key: "first",
+      label: "Việc bạn có thể làm",
+      icon: phaseMeta.first.icon,
+      steps: [
+        {
+          title: "Tìm nhanh bằng ô search",
+          detail:
+            "Dùng ô “Tìm trong workspace” ở đầu trang (hoặc phím tắt ⌘K) để nhảy thẳng tới một task, sản phẩm hay campaign.",
+        },
+        {
+          title: "Theo dõi một sản phẩm hoặc campaign cụ thể",
+          detail:
+            "Mở chi tiết để xem lịch sử chuyển giai đoạn, readiness, hoặc bằng chứng nghiên cứu đã gắn.",
+        },
+      ],
+    },
+    {
+      key: "limits",
+      label: phaseMeta.limits.label,
+      icon: phaseMeta.limits.icon,
+      steps: [
+        {
+          title: "Không có nút tạo/sửa nào hoạt động",
+          detail:
+            "Đây là thiết kế đúng, không phải lỗi hiển thị — mọi thao tác ghi đều bị database từ chối cho role Viewer.",
+        },
+        {
+          title: "Cần thay đổi gì, nhờ đúng người",
+          detail:
+            "Xem tab Vai trò & quyền để biết ai đang giữ quyền cho từng module.",
+        },
+      ],
+    },
   ],
 };
+function Onboarding() {
+  const [role, setRole] = useState<RoleKey>("founder");
+  const active = systemRoles.find((r) => r.key === role)!;
+  return (
+    <>
+      <div className="onboarding-intro">
+        <p className="eyebrow">HƯỚNG DẪN THEO VAI TRÒ</p>
+        <h2>Ngày đầu tiên của bạn ở HẸN</h2>
+        <p>
+          Chọn đúng vai trò bạn đang giữ để biết việc nên làm trước, và những
+          gì role đó chưa làm được — tránh mất thời gian bấm thử.
+        </p>
+      </div>
+      <div className="role-picker">
+        {systemRoles.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            className={`role-picker-card${role === r.key ? " active" : ""}`}
+            aria-pressed={role === r.key}
+            onClick={() => setRole(r.key)}
+          >
+            <span className="role-picker-icon">
+              <r.icon size={20} />
+            </span>
+            <strong>{r.label}</strong>
+            <span>{r.blurb}</span>
+          </button>
+        ))}
+      </div>
+      <section className="surface">
+        <div className="onboarding-journey-head">
+          <span className="role-picker-icon">
+            <active.icon size={24} />
+          </span>
+          <div>
+            <h3>Hành trình của {active.label}</h3>
+            <p>{active.blurb}</p>
+          </div>
+        </div>
+        {onboardingJourneys[role].map((phase) => (
+          <div className="onboarding-phase" key={phase.key}>
+            <span className={`onboarding-phase-head tone-${phaseMeta[phase.key].tone}`}>
+              <phase.icon size={15} />
+              {phase.label}
+            </span>
+            <div className="onboarding-phase-steps">
+              {phase.steps.map((step, i) => (
+                <div className="onboarding-step" key={step.title}>
+                  <span className="onboarding-step-index">{i + 1}</span>
+                  <div>
+                    <strong>{step.title}</strong>
+                    <p>{step.detail}</p>
+                    {step.href && (
+                      <Link className="onboarding-step-link" href={step.href}>
+                        {step.linkLabel}
+                        <ArrowUpRight size={14} />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+      <div className="onboarding-footer">
+        <ShieldCheck size={18} />
+        <p>
+          Muốn xem đầy đủ ma trận quyền của cả 5 role cùng lúc? Qua tab “Vai
+          trò & quyền” bên trên.
+        </p>
+      </div>
+    </>
+  );
+}
 export function Settings() {
   const { data, setData, editable, record } = useWorkspace();
-  const [tab, setTab] = useState("workspace");
+  const [tab, setTab] = useState("onboarding");
   const [permRole, setPermRole] = useState<RoleKey>("founder");
   const [member, setMember] = useState<number | null | undefined>(undefined);
   const [roleSelection, setRoleSelection] = useState<string[]>([]);
@@ -410,12 +789,15 @@ export function Settings() {
         value={tab}
         onChange={setTab}
         items={[
+          { value: "onboarding", label: "Bắt đầu" },
           { value: "workspace", label: "Workspace" },
           { value: "team", label: "Đội hình", count: data.members.length },
           { value: "permissions", label: "Vai trò & quyền" },
         ]}
       />
-      {tab === "workspace" ? (
+      {tab === "onboarding" ? (
+        <Onboarding />
+      ) : tab === "workspace" ? (
         <div className="settings-layout">
           <section className="surface">
             <h2>Thông tin chung</h2>
@@ -605,7 +987,7 @@ export function Settings() {
             </p>
           </section>
           <section className="surface">
-            <h2>Chọn role để xem hướng dẫn</h2>
+            <h2>Chi tiết theo role</h2>
             <div className="role-switch" aria-label="Chọn role">
               {systemRoles.map((r) => (
                 <button
@@ -619,23 +1001,6 @@ export function Settings() {
                 </button>
               ))}
             </div>
-          </section>
-          <section className="surface">
-            <div className="section-heading">
-              <h2>
-                Lần đầu dùng? Bắt đầu từ đây nếu bạn là{" "}
-                {systemRoles.find((r) => r.key === permRole)?.label}
-              </h2>
-              <Rocket size={22} />
-            </div>
-            <ol className="onboarding-steps">
-              {onboardingSteps[permRole].map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          </section>
-          <section className="surface">
-            <h2>Chi tiết quyền theo module</h2>
             <div className="permission-cards">
               {roleDetails[permRole].map((row) => (
                 <article className="permission-card" key={row.module}>
