@@ -126,6 +126,13 @@ const accessMatrix: Record<string, Record<RoleKey, AccessLevel>> = {
     brand_designer: "view",
     viewer: "view",
   },
+  Settings: {
+    founder: "full",
+    ops: "view",
+    product_designer: "view",
+    brand_designer: "view",
+    viewer: "view",
+  },
 };
 const roleDetails: Record<
   RoleKey,
@@ -172,6 +179,15 @@ const roleDetails: Record<
       access: "full",
       notes: ["Ngang quyền với Ops trong quản lý kho, đối tác, sự cố."],
     },
+    {
+      module: "Settings",
+      access: "full",
+      notes: [
+        "Là role duy nhất thêm thành viên, đổi vai trò, tắt/bật quyền truy cập.",
+        "Sửa được tên workspace và ngày bắt đầu roadmap.",
+        "Không thể tự hạ vai trò mình nếu đang là Founder hoạt động cuối cùng.",
+      ],
+    },
   ],
   ops: [
     {
@@ -214,6 +230,13 @@ const roleDetails: Record<
       access: "full",
       notes: ["Quản lý tồn kho, đối tác, ghi nhận và đóng sự cố đơn hàng."],
     },
+    {
+      module: "Settings",
+      access: "view",
+      notes: [
+        "Xem được đội hình và vai trò của mọi người; không thêm/sửa thành viên được.",
+      ],
+    },
   ],
   product_designer: [
     {
@@ -251,6 +274,11 @@ const roleDetails: Record<
       module: "Operations",
       access: "view",
       notes: ["Xem tồn kho, đối tác, sự cố; không thêm/sửa được."],
+    },
+    {
+      module: "Settings",
+      access: "view",
+      notes: ["Xem đội hình và vai trò; mọi thay đổi cần Founder."],
     },
   ],
   brand_designer: [
@@ -292,6 +320,11 @@ const roleDetails: Record<
       module: "Operations",
       access: "view",
       notes: ["Xem tồn kho, đối tác, sự cố; không thêm/sửa được."],
+    },
+    {
+      module: "Settings",
+      access: "view",
+      notes: ["Xem đội hình và vai trò; mọi thay đổi cần Founder."],
     },
   ],
   viewer: [
@@ -342,7 +375,7 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
         {
           title: "Rà lại thông tin workspace",
           detail:
-            "Vào tab Workspace bên cạnh kiểm tra tên và ngày bắt đầu roadmap. Hai trường này hiện chỉ đọc — nhờ kỹ thuật chỉnh trực tiếp trong database nếu cần đổi.",
+            "Vào tab Workspace bên cạnh để kiểm tra tên và ngày bắt đầu roadmap — bạn sửa trực tiếp được. Đổi ngày bắt đầu sẽ dời toàn bộ mốc trên Timeline.",
         },
       ],
     },
@@ -372,6 +405,11 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
           href: "/campaigns",
           linkLabel: "Mở Campaigns",
         },
+        {
+          title: "Mời đội vào workspace",
+          detail:
+            "Tab “Đội hình” → “Thêm thành viên”, nhập email và chọn vai trò. Người chưa có tài khoản vẫn thêm được: vai trò giữ sẵn tới lần họ đăng nhập đầu tiên.",
+        },
       ],
     },
     {
@@ -385,9 +423,9 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
             "Vượt giới hạn 2 việc/người, mở campaign khi readiness chưa đủ, hay chuyển sản phẩm sang Build/Pilot/Live/Learned/Archived — bạn là người duy nhất làm được, nhưng hệ thống luôn bắt ghi lý do và lưu vào nhật ký hoạt động.",
         },
         {
-          title: "Thêm thành viên mới cần thao tác thủ công",
+          title: "Bạn là người duy nhất phân vai được",
           detail:
-            "App chưa có nút mời thành viên. Cần cấp tài khoản Supabase Auth rồi thêm thủ công vào bảng admin_memberships — xem chi tiết ở tab Vai trò & quyền.",
+            "Thêm thành viên và đổi vai trò nằm ở tab “Đội hình”. Hệ thống không cho bạn tự hạ vai trò mình nếu đang là Founder hoạt động cuối cùng.",
         },
       ],
     },
@@ -437,6 +475,13 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
             "Khi tất cả mục readiness của một campaign đã tick xong, bấm “Kiểm tra mở bán” là mở được ngay — không cần chờ Founder.",
           href: "/campaigns",
           linkLabel: "Mở Campaigns",
+        },
+        {
+          title: "Xem lịch xuất bản trước mỗi đợt",
+          detail:
+            "Content Studio có chế độ xem lịch theo tháng; nếu campaign sắp mở mà nội dung chưa lên lịch, cảnh báo sẽ hiện ngay đầu trang.",
+          href: "/content",
+          linkLabel: "Mở Content Studio",
         },
       ],
     },
@@ -495,9 +540,14 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
             "Mở một sản phẩm, sang tab “Tài liệu & bằng chứng”, gắn một ghi chú phỏng vấn hoặc kết quả usability test.",
         },
         {
+          title: "Chấm tác động và công sức",
+          detail:
+            "Mỗi sản phẩm chấm 1–5 cho tác động và công sức. Danh sách sắp xếp được theo điểm ưu tiên, và hai ý tưởng có thể đặt cạnh nhau để so sánh.",
+        },
+        {
           title: "Đưa sản phẩm đi tiếp",
           detail:
-            "Khi đã đủ căn cứ, dùng “Chuyển giai đoạn” để đưa sản phẩm từ Discovery → Design → Ready for build.",
+            "Thẻ “Sẵn sàng đi tiếp?” trong trang chi tiết cho biết còn thiếu gì. Khi đã đủ căn cứ, dùng “Chuyển giai đoạn” để đi từ Discovery → Design → Ready for build.",
         },
         {
           title: "Tạo task nghiên cứu hoặc thiết kế",
@@ -522,6 +572,11 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
           title: "Timeline, Campaigns, Content, Operations chỉ để xem",
           detail:
             "Bạn thấy toàn bộ dữ liệu ở bốn module này nhưng không có nút tạo/sửa nào hoạt động.",
+        },
+        {
+          title: "Ý tưởng nằm quá 21 ngày sẽ bị nêu tên",
+          detail:
+            "Trang Products cảnh báo những sản phẩm đứng yên một giai đoạn quá lâu — đẩy đi tiếp hoặc chuyển vào lưu trữ cho gọn sổ.",
         },
       ],
     },
@@ -556,7 +611,14 @@ const onboardingJourneys: Record<RoleKey, OnboardingPhase[]> = {
         {
           title: "Tạo một ý tưởng nội dung",
           detail:
-            "Trong Content Studio, bấm “Ý tưởng mới”, điền hook, chọn format và kênh đăng.",
+            "Trong Content Studio, bấm “Ý tưởng mới”, điền hook, chọn format và kênh đăng. Mở một nội dung có sẵn rồi bấm “Nhân bản” nếu muốn thử nhiều biến thể hook.",
+        },
+        {
+          title: "Kéo thẻ để đổi trạng thái",
+          detail:
+            "Ở chế độ pipeline, kéo thẻ sang cột khác là đổi trạng thái luôn. Cột Scheduled/Published/Learned cần có ngày đăng và link asset trước.",
+          href: "/content",
+          linkLabel: "Mở Content Studio",
         },
         {
           title: "Hoàn thành phần readiness của bạn",
@@ -1421,9 +1483,9 @@ export function Settings() {
               </table>
             </div>
             <p className="form-hint">
-              Today và Settings chưa nối luồng ghi cho bất kỳ role nào — kể cả
-              Founder. Check-in, hoạt động và chỉnh workspace/thành viên hiện
-              chỉ là bản xem trước, mất khi tải lại trang.
+              Riêng Today chưa nối luồng ghi cho bất kỳ role nào — check-in và
+              nhật ký hoạt động ở đó chỉ tồn tại trong phiên, mất khi tải lại
+              trang.
             </p>
           </section>
           <section className="surface">
@@ -1462,17 +1524,20 @@ export function Settings() {
           <section className="surface">
             <h2>Thêm thành viên mới</h2>
             <p className="muted">
-              Tab “Đội hình” ở trên hiện chỉ là bản xem trước — thêm ở đó
-              không tạo tài khoản thật. Vì đã tắt đăng ký công khai, một
-              thành viên mới cần được cấp tài khoản Supabase Auth rồi thêm
-              thủ công vào bảng admin_memberships (workspace, user_id, danh
-              sách role) — việc này hiện chỉ làm được qua Supabase Dashboard,
-              chưa có màn hình riêng trong app.
+              Founder thêm người mới ngay ở tab “Đội hình”: nhập email kèm vai
+              trò. Nếu email đó đã có tài khoản Supabase Auth, người đó vào
+              workspace ngay. Nếu chưa, vai trò được giữ sẵn và tự áp dụng ở
+              lần đăng nhập đầu tiên của họ.
             </p>
             <p className="muted">
-              Ai đăng nhập mà chưa có dòng trong admin_memberships sẽ thấy
-              thông báo “Tài khoản chưa được thêm vào workspace HẸN. Liên hệ
-              Founder để được cấp quyền” và không vào được workspace.
+              Vì đăng ký công khai đã tắt, tài khoản đăng nhập vẫn phải được
+              tạo một lần trong Supabase Dashboard (Authentication → Add user).
+              Sau bước đó, mọi việc phân vai đều làm trong app, không cần chạy
+              SQL.
+            </p>
+            <p className="muted">
+              Ai đăng nhập mà chưa được mời sẽ thấy thông báo “Tài khoản chưa
+              được thêm vào workspace HẸN. Liên hệ Founder để được cấp quyền”.
             </p>
           </section>
         </>
