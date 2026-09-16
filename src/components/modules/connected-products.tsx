@@ -8,6 +8,10 @@ import {
   ArrowRight,
   FileText,
   Archive,
+  ArrowsLeftRight,
+  Hourglass,
+  CheckCircle,
+  Circle,
 } from "@phosphor-icons/react";
 import { mutateProduct, readProductDetails } from "@/app/actions/products";
 import { type ProductCommand, type ProductDetails } from "@/lib/domain/live-products";
@@ -73,6 +77,8 @@ function ProductForm({
       moment: v("moment"),
       audience: v("audience"),
       promise: v("promise"),
+      impact_score: Number(v("impact_score")) || null,
+      effort_score: Number(v("effort_score")) || null,
     };
     run(
       { operation: product ? "update" : "create", payload } as ProductCommand,
@@ -99,6 +105,28 @@ function ProductForm({
         <Field label="Lời hứa sản phẩm">
           <textarea name="promise" rows={3} defaultValue={product?.promise} />
         </Field>
+        <div className="form-grid">
+          <Field label="Tác động" hint="1 = nhỏ, 5 = đổi cuộc chơi">
+            <select name="impact_score" defaultValue={product?.impact_score ?? ""}>
+              <option value="">Chưa chấm</option>
+              {[1, 2, 3, 4, 5].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Công sức" hint="1 = làm nhanh, 5 = rất nặng">
+            <select name="effort_score" defaultValue={product?.effort_score ?? ""}>
+              <option value="">Chưa chấm</option>
+              {[1, 2, 3, 4, 5].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
         {error && (
           <p role="alert" className="error-message">
             {error}
@@ -114,21 +142,61 @@ function ProductForm({
     </form>
   );
 }
+const STALE_DAYS = 21;
+const movingStages = [
+  "idea",
+  "discovery",
+  "design",
+  "ready_for_build",
+  "build",
+  "pilot",
+];
+function daysInStage(product: Product) {
+  if (!product.stage_since) return null;
+  const started = Date.parse(product.stage_since);
+  if (!Number.isFinite(started)) return null;
+  return Math.max(0, Math.floor((Date.now() - started) / 86400000));
+}
+function isStalled(product: Product) {
+  const days = daysInStage(product);
+  return (
+    days !== null && days >= STALE_DAYS && movingStages.includes(product.stage)
+  );
+}
+function priorityScore(product: Product) {
+  if (!product.impact_score || !product.effort_score) return null;
+  return Math.round((product.impact_score / product.effort_score) * 10) / 10;
+}
 export function ConnectedProducts() {
   const { data } = useWorkspace();
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("");
+  const [sort, setSort] = useState("stage");
+  const [compare, setCompare] = useState(false);
+  const [left, setLeft] = useState("");
+  const [right, setRight] = useState("");
   const [create, setCreate] = useState(false);
   const contributor = data.roles.some((r) =>
     ["founder", "ops", "product_designer", "brand_designer"].includes(r),
   );
-  const visible = data.products.filter(
-    (p) =>
-      (!stage || p.stage === stage) &&
-      `${p.name} ${p.moment}`
-        .toLocaleLowerCase("vi")
-        .includes(query.toLocaleLowerCase("vi")),
-  );
+  const stalled = data.products.filter(isStalled);
+  const visible = data.products
+    .filter(
+      (p) =>
+        (!stage || p.stage === stage) &&
+        `${p.name} ${p.moment}`
+          .toLocaleLowerCase("vi")
+          .includes(query.toLocaleLowerCase("vi")),
+    )
+    .sort((a, b) => {
+      if (sort === "priority")
+        return (priorityScore(b) ?? -1) - (priorityScore(a) ?? -1);
+      if (sort === "stalled")
+        return (daysInStage(b) ?? -1) - (daysInStage(a) ?? -1);
+      return 0;
+    });
+  const leftProduct = data.products.find((p) => p.id === left);
+  const rightProduct = data.products.find((p) => p.id === right);
   return (
     <>
       <PageHeading
@@ -168,8 +236,115 @@ export function ConnectedProducts() {
             </option>
           ))}
         </select>
+        <select
+          aria-label="Sắp xếp sản phẩm"
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+        >
+          <option value="stage">Thứ tự mặc định</option>
+          <option value="priority">Ưu tiên: tác động / công sức</option>
+          <option value="stalled">Nằm lâu nhất một giai đoạn</option>
+        </select>
+        <Button variant="outline" onClick={() => setCompare((v) => !v)}>
+          <ArrowsLeftRight size={16} />
+          {compare ? "Đóng so sánh" : "So sánh 2 sản phẩm"}
+        </Button>
         <span className="count-label">{visible.length} sản phẩm</span>
       </div>
+      {stalled.length > 0 && (
+        <p className="notice">
+          <Hourglass size={18} />
+          {stalled.length} ý tưởng đã ở yên một giai đoạn hơn {STALE_DAYS} ngày:{" "}
+          {stalled.map((p) => p.name).join(", ")}. Đẩy đi tiếp hoặc chuyển vào
+          lưu trữ để đội khỏi phải nhớ.
+        </p>
+      )}
+      {compare && (
+        <section className="surface">
+          <div className="section-heading">
+            <h2>So sánh hai hướng đi</h2>
+            <ArrowsLeftRight size={22} />
+          </div>
+          <div className="form-grid">
+            <Field label="Sản phẩm A">
+              <select value={left} onChange={(e) => setLeft(e.target.value)}>
+                <option value="">Chọn sản phẩm</option>
+                {data.products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Sản phẩm B">
+              <select value={right} onChange={(e) => setRight(e.target.value)}>
+                <option value="">Chọn sản phẩm</option>
+                {data.products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {leftProduct && rightProduct ? (
+            <div className="table-scroll">
+              <table className="data-table compare-table">
+                <thead>
+                  <tr>
+                    <th />
+                    <th>{leftProduct.name}</th>
+                    <th>{rightProduct.name}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(
+                    [
+                      [
+                        "Giai đoạn",
+                        (p: Product) => stageLabels[p.stage] ?? p.stage,
+                      ],
+                      [
+                        "Đã ở giai đoạn này",
+                        (p: Product) => {
+                          const d = daysInStage(p);
+                          return d === null ? "—" : `${d} ngày`;
+                        },
+                      ],
+                      [
+                        "Tác động / công sức",
+                        (p: Product) =>
+                          p.impact_score && p.effort_score
+                            ? `${p.impact_score} / ${p.effort_score} (điểm ${priorityScore(p)})`
+                            : "Chưa chấm",
+                      ],
+                      ["Bằng chứng", (p: Product) => `${p.evidenceCount ?? 0} mục`],
+                      [
+                        "Công việc gắn kèm",
+                        (p: Product) =>
+                          `${data.tasks.filter((t) => t.product === p.name).length} việc`,
+                      ],
+                      ["Khoảnh khắc", (p: Product) => p.moment || "—"],
+                      ["Dành cho ai", (p: Product) => p.audience || "—"],
+                      ["Lời hứa", (p: Product) => p.promise || "—"],
+                    ] as [string, (p: Product) => string][]
+                  ).map(([label, render]) => (
+                    <tr key={label}>
+                      <td>
+                        <strong>{label}</strong>
+                      </td>
+                      <td>{render(leftProduct)}</td>
+                      <td>{render(rightProduct)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="muted">Chọn hai sản phẩm để đặt cạnh nhau.</p>
+          )}
+        </section>
+      )}
       {visible.length ? (
         <div className="product-grid">
           {visible.map((p, i) => (
@@ -197,6 +372,20 @@ export function ConnectedProducts() {
                   {data.tasks.filter((t) => t.product === p.name).length} công
                   việc
                 </small>
+              </div>
+              <div className="product-signals">
+                {priorityScore(p) !== null && (
+                  <span className="signal">
+                    Ưu tiên {priorityScore(p)} · tác động {p.impact_score}/công
+                    sức {p.effort_score}
+                  </span>
+                )}
+                {daysInStage(p) !== null && (
+                  <span className={`signal${isStalled(p) ? " signal-warn" : ""}`}>
+                    <Hourglass size={13} />
+                    {daysInStage(p)} ngày ở giai đoạn này
+                  </span>
+                )}
               </div>
             </Link>
           ))}
@@ -249,6 +438,33 @@ function LiveProduct({ product }: { product: Product }) {
   const unlocked = !!data.catalogReady && contributor;
   const linked = data.tasks.filter((t) => t.product === product.name);
   const privilegedStages = ["build", "pilot", "live", "learned", "archived"];
+  const evidenceCount = details?.evidence.length ?? product.evidenceCount ?? 0;
+  const stageDays = daysInStage(product);
+  const gates = [
+    {
+      label: "Đã rõ khoảnh khắc, đối tượng và lời hứa",
+      hint: "Ba câu trả lời này là nền của mọi brief sau đó.",
+      done: Boolean(product.moment && product.audience && product.promise),
+    },
+    {
+      label: "Có ít nhất một bằng chứng",
+      hint: `Đang có ${evidenceCount} tài liệu trong tab Bằng chứng.`,
+      done: evidenceCount > 0,
+    },
+    {
+      label: "Có việc đã hoàn tất cho sản phẩm này",
+      hint: `${linked.filter((t) => t.status === "done").length}/${linked.length} công việc đã xong.`,
+      done: linked.some((t) => t.status === "done"),
+    },
+    {
+      label: "Đã chấm tác động và công sức",
+      hint: product.impact_score
+        ? `Tác động ${product.impact_score}, công sức ${product.effort_score}.`
+        : "Chấm điểm giúp xếp thứ tự khi có nhiều ý tưởng cùng lúc.",
+      done: Boolean(product.impact_score && product.effort_score),
+    },
+  ];
+  const gatesDone = gates.filter((g) => g.done).length;
   useEffect(() => {
     let active = true;
     if (!data.catalogReady || !data.workspaceId) return;
@@ -341,6 +557,15 @@ function LiveProduct({ product }: { product: Product }) {
           </Button>
         </div>
       )}
+      {stageDays !== null && (
+        <p className={`stage-age${isStalled(product) ? " stage-age-warn" : ""}`}>
+          <Hourglass size={16} />
+          Đang ở {stageLabels[product.stage]} được {stageDays} ngày
+          {isStalled(product)
+            ? " — quá lâu so với nhịp 21 ngày của đội, cân nhắc đẩy tiếp hoặc lưu trữ."
+            : "."}
+        </p>
+      )}
       <div className="product-progress">
         {[
           "idea",
@@ -377,6 +602,36 @@ function LiveProduct({ product }: { product: Product }) {
       />
       {tab === "overview" ? (
         <>
+          <section className="surface">
+            <div className="section-heading">
+              <h2>Sẵn sàng đi tiếp?</h2>
+              <Badge tone={gatesDone === gates.length ? "green" : "amber"}>
+                {gatesDone}/{gates.length} điều kiện
+              </Badge>
+            </div>
+            <p className="muted">
+              Không phải luật cứng — đây là những thứ đội thường tiếc khi bỏ qua
+              trước lúc đẩy một ý tưởng sang giai đoạn sau.
+            </p>
+            <div className="gate-list">
+              {gates.map((gate) => (
+                <div
+                  className={`gate-row${gate.done ? " gate-done" : ""}`}
+                  key={gate.label}
+                >
+                  {gate.done ? (
+                    <CheckCircle size={19} weight="fill" />
+                  ) : (
+                    <Circle size={19} />
+                  )}
+                  <div>
+                    <strong>{gate.label}</strong>
+                    <small>{gate.hint}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
           <div className="detail-grid">
             <section className="surface product-promise">
               <span className="eyebrow">ĐIỀU MÌNH HỨA</span>

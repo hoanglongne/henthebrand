@@ -9,12 +9,20 @@ const viewer = "90000000-0000-4000-8000-000000000003";
 const discoveryProduct = "20000000-0000-4000-8000-000000000001";
 const ideaProduct = "20000000-0000-4000-8000-000000000002";
 let db: PGlite;
-type Row = { id: string; updated_at: string; stage: string };
+type Row = {
+  id: string;
+  updated_at: string;
+  stage: string;
+  stage_since?: string;
+  impact_score?: number;
+};
 const fields = {
   name: "Sản phẩm thật",
   moment: "Một khoảnh khắc",
   audience: "Cặp đôi",
   promise: "Lời hứa",
+  impact_score: 4,
+  effort_score: 2,
 };
 async function login(id: string) {
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [id]);
@@ -49,6 +57,9 @@ beforeAll(async () => {
   );
   await db.exec(
     readFileSync("supabase/migrations/202609160003_products_timeline.sql", "utf8"),
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202609210008_product_insights.sql", "utf8"),
   );
   await db.exec(
     `insert into admin_memberships(workspace_id,user_id,display_name,roles) values('${ws}','${designer}','Designer','{product_designer}'),('${ws}','${viewer}','Viewer','{viewer}');grant usage on schema auth to authenticated;set role authenticated;`,
@@ -120,6 +131,28 @@ it("blocks a second product entering Build or Discovery/Design", async () => {
   await expect(
     call(second, "stage_change", { stage: "discovery", note: "Ý tưởng khác" }),
   ).rejects.toThrow("HEN_STAGE_DISCOVERY_LIMIT");
+});
+it("stamps stage_since and keeps the impact/effort score", async () => {
+  await login(founder);
+  const p = await create();
+  expect(p.impact_score).toBe(4);
+  const before = (
+    await db.query<{ stage_since: string }>(
+      "select stage_since::text from admin_products where id=$1",
+      [p.id],
+    )
+  ).rows[0].stage_since;
+  const moved = await call(p, "stage_change", {
+    stage: "ready_for_build",
+    note: "Đi tiếp",
+  });
+  const after = (
+    await db.query<{ stage_since: string }>(
+      "select stage_since::text from admin_products where id=$1",
+      [moved.id],
+    )
+  ).rows[0].stage_since;
+  expect(after).not.toBe(before);
 });
 it("requires readiness confirmation before Pilot or Live", async () => {
   let p = await create();

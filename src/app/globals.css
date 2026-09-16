@@ -3429,3 +3429,73 @@ textarea:disabled {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.product-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.product-signals .signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--cream);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.product-signals .signal-warn {
+  background: #f4ebd4;
+  border-color: #e3d2a8;
+  color: #79571d;
+}
+.stage-age {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+.stage-age-warn {
+  color: #79571d;
+  font-weight: 500;
+}
+.gate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 14px;
+}
+.gate-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.gate-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.gate-row strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--foreground);
+  margin-bottom: 2px;
+}
+.gate-row small {
+  font-size: 12px;
+}
+.gate-row.gate-done {
+  color: #456329;
+}
+.gate-row.gate-done strong {
+  color: #456329;
+}
+.compare-table td:first-child {
+  width: 30%;
+}

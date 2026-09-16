@@ -4,6 +4,8 @@ const productFields = z.object({
   moment: z.string().trim().max(2000),
   audience: z.string().trim().max(2000),
   promise: z.string().trim().max(2000),
+  impact_score: z.number().int().min(1).max(5).nullable(),
+  effort_score: z.number().int().min(1).max(5).nullable(),
 });
 const httpsUrl = z
   .url()

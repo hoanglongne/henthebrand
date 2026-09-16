@@ -103,6 +103,10 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
       .select("*")
       .eq("workspace_id", workspace)
       .order("created_at", { ascending: false }),
+    client
+      .from("admin_product_evidence")
+      .select("product_id")
+      .eq("workspace_id", workspace),
     // RLS chỉ trả danh sách chờ cho Founder; role khác nhận mảng rỗng.
     client
       .from("admin_pending_members")
@@ -124,6 +128,7 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     stock,
     vendors,
     issues,
+    evidence,
     pending,
   ] = results;
   return {
@@ -149,7 +154,11 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
         products.data?.find((p) => p.id === t.product_id)?.name ??
         "Chưa gắn sản phẩm",
     })) as Task[],
-    products: products.data ?? [],
+    products: (products.data ?? []).map((p) => ({
+      ...p,
+      evidenceCount: (evidence.data ?? []).filter((e) => e.product_id === p.id)
+        .length,
+    })),
     milestones: milestones.data ?? [],
     campaigns: (campaigns.data ?? []).map((c) => ({
       id: c.id,

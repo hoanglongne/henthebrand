@@ -62,6 +62,10 @@ export type Product = {
   stage: string;
   audience: string;
   updated_at?: string;
+  stage_since?: string;
+  impact_score?: number | null;
+  effort_score?: number | null;
+  evidenceCount?: number;
 };
 export type Milestone = {
   id: string;
