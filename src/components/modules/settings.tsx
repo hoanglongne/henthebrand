@@ -6,6 +6,11 @@ import {
   ShieldCheck,
   ArrowUpRight,
   PlugsConnected,
+  Crown,
+  Wrench,
+  Cube,
+  PenNib,
+  Eye,
 } from "@phosphor-icons/react";
 import { useWorkspace } from "../workspace-provider";
 import {
@@ -25,9 +30,276 @@ const roles = [
   "Brand / Content",
   "Viewer",
 ];
+type AccessLevel = "full" | "limited" | "view";
+const accessLabel: Record<AccessLevel, string> = {
+  full: "Toàn quyền",
+  limited: "Có điều kiện",
+  view: "Chỉ xem",
+};
+const accessTone: Record<AccessLevel, string> = {
+  full: "green",
+  limited: "amber",
+  view: "blue",
+};
+const systemRoles = [
+  {
+    key: "founder",
+    label: "Founder",
+    icon: Crown,
+    blurb: "Toàn quyền, có thể override khi cần",
+  },
+  {
+    key: "ops",
+    label: "Ops",
+    icon: Wrench,
+    blurb: "Vận hành: task, campaign, kho, sự cố",
+  },
+  {
+    key: "product_designer",
+    label: "Product Designer",
+    icon: Cube,
+    blurb: "Sản phẩm, bằng chứng, task thiết kế",
+  },
+  {
+    key: "brand_designer",
+    label: "Brand Designer",
+    icon: PenNib,
+    blurb: "Campaign, content, asset",
+  },
+  {
+    key: "viewer",
+    label: "Viewer",
+    icon: Eye,
+    blurb: "Chỉ xem, không sửa được gì",
+  },
+] as const;
+type RoleKey = (typeof systemRoles)[number]["key"];
+const accessMatrix: Record<string, Record<RoleKey, AccessLevel>> = {
+  Work: {
+    founder: "full",
+    ops: "limited",
+    product_designer: "limited",
+    brand_designer: "limited",
+    viewer: "view",
+  },
+  Products: {
+    founder: "full",
+    ops: "limited",
+    product_designer: "limited",
+    brand_designer: "limited",
+    viewer: "view",
+  },
+  Timeline: {
+    founder: "full",
+    ops: "full",
+    product_designer: "view",
+    brand_designer: "view",
+    viewer: "view",
+  },
+  Campaigns: {
+    founder: "full",
+    ops: "limited",
+    product_designer: "view",
+    brand_designer: "limited",
+    viewer: "view",
+  },
+  "Content Studio": {
+    founder: "full",
+    ops: "full",
+    product_designer: "view",
+    brand_designer: "full",
+    viewer: "view",
+  },
+  Operations: {
+    founder: "full",
+    ops: "full",
+    product_designer: "view",
+    brand_designer: "view",
+    viewer: "view",
+  },
+};
+const roleDetails: Record<
+  RoleKey,
+  { module: string; access: AccessLevel; notes: string[] }[]
+> = {
+  founder: [
+    {
+      module: "Work",
+      access: "full",
+      notes: [
+        "Tạo, sửa, phân công owner/approver cho bất kỳ task nào.",
+        "Là người duy nhất duyệt Done nếu không phải approver được chỉ định.",
+        "Vượt giới hạn 2 việc “Đang làm”/người khi cần, miễn có lý do.",
+      ],
+    },
+    {
+      module: "Products",
+      access: "full",
+      notes: [
+        "Là role duy nhất chuyển sản phẩm sang Build, Pilot, Live, Learned, Archived.",
+        "Vẫn phải tuân giới hạn 1 sản phẩm Build, 1 sản phẩm Discovery/Design cùng lúc.",
+      ],
+    },
+    {
+      module: "Timeline",
+      access: "full",
+      notes: ["Tạo, sửa, xoá mốc hành trình — ngang quyền với Ops."],
+    },
+    {
+      module: "Campaigns",
+      access: "full",
+      notes: [
+        "Là role duy nhất mở campaign khi readiness chưa đủ (bắt buộc ghi lý do override).",
+        "Khi readiness đã đủ, mở/kết thúc campaign như Ops.",
+      ],
+    },
+    {
+      module: "Content Studio",
+      access: "full",
+      notes: ["Ngang quyền với Ops và Brand Designer."],
+    },
+    {
+      module: "Operations",
+      access: "full",
+      notes: ["Ngang quyền với Ops trong quản lý kho, đối tác, sự cố."],
+    },
+  ],
+  ops: [
+    {
+      module: "Work",
+      access: "limited",
+      notes: [
+        "Tạo task mới, sửa task mình đang là owner.",
+        "Không đổi được owner/approver sau khi task đã tạo.",
+        "Không tự vượt giới hạn WIP — chỉ Founder override được.",
+      ],
+    },
+    {
+      module: "Products",
+      access: "limited",
+      notes: [
+        "Tạo/sửa sản phẩm, chuyển giai đoạn Idea → Discovery → Design → Ready for build.",
+        "Không chuyển được sang Build/Pilot/Live/Learned/Archived.",
+      ],
+    },
+    {
+      module: "Timeline",
+      access: "full",
+      notes: ["Tạo, sửa, xoá mốc hành trình — ngang quyền Founder."],
+    },
+    {
+      module: "Campaigns",
+      access: "limited",
+      notes: [
+        "Tạo/sửa campaign, tick readiness, mở campaign khi readiness đã đủ, kết thúc campaign đang chạy.",
+        "Không override được khi readiness chưa đủ.",
+      ],
+    },
+    {
+      module: "Content Studio",
+      access: "full",
+      notes: ["Tạo/sửa mọi nội dung — ngang quyền Founder, Brand Designer."],
+    },
+    {
+      module: "Operations",
+      access: "full",
+      notes: ["Quản lý tồn kho, đối tác, ghi nhận và đóng sự cố đơn hàng."],
+    },
+  ],
+  product_designer: [
+    {
+      module: "Work",
+      access: "limited",
+      notes: [
+        "Tạo task, sửa task mình phụ trách, thêm checklist/link/bình luận.",
+        "Không đổi owner/approver, không vượt WIP, không duyệt Done trừ khi là approver.",
+      ],
+    },
+    {
+      module: "Products",
+      access: "limited",
+      notes: [
+        "Tạo/sửa sản phẩm, gắn bằng chứng nghiên cứu, chuyển giai đoạn tới Ready for build.",
+        "Không chuyển được sang Build/Pilot/Live/Learned/Archived.",
+      ],
+    },
+    {
+      module: "Timeline",
+      access: "view",
+      notes: ["Xem roadmap; nút chỉnh mốc bị khoá."],
+    },
+    {
+      module: "Campaigns",
+      access: "view",
+      notes: ["Xem danh sách và readiness; nút tạo/sửa/mở bị khoá."],
+    },
+    {
+      module: "Content Studio",
+      access: "view",
+      notes: ["Xem pipeline nội dung; không tạo/sửa được."],
+    },
+    {
+      module: "Operations",
+      access: "view",
+      notes: ["Xem tồn kho, đối tác, sự cố; không thêm/sửa được."],
+    },
+  ],
+  brand_designer: [
+    {
+      module: "Work",
+      access: "limited",
+      notes: [
+        "Tạo task, sửa task mình phụ trách, thêm checklist/link/bình luận.",
+        "Không đổi owner/approver, không vượt WIP, không duyệt Done trừ khi là approver.",
+      ],
+    },
+    {
+      module: "Products",
+      access: "limited",
+      notes: [
+        "Tạo/sửa sản phẩm, gắn bằng chứng, chuyển giai đoạn tới Ready for build.",
+        "Không vào được Build/Pilot/Live/Learned/Archived.",
+      ],
+    },
+    {
+      module: "Timeline",
+      access: "view",
+      notes: ["Xem roadmap; không chỉnh được mốc."],
+    },
+    {
+      module: "Campaigns",
+      access: "limited",
+      notes: [
+        "Tạo/sửa brief campaign, tick từng mục readiness.",
+        "Không mở (launch) và không kết thúc campaign — chỉ Founder/Ops làm được.",
+      ],
+    },
+    {
+      module: "Content Studio",
+      access: "full",
+      notes: ["Tạo/sửa mọi nội dung, đổi trạng thái, gắn link asset và campaign."],
+    },
+    {
+      module: "Operations",
+      access: "view",
+      notes: ["Xem tồn kho, đối tác, sự cố; không thêm/sửa được."],
+    },
+  ],
+  viewer: [
+    {
+      module: "Toàn bộ module",
+      access: "view",
+      notes: [
+        "Mọi nút tạo/sửa/xoá đều bị khoá; gọi thẳng API cũng bị database từ chối.",
+        "Không thể được gán làm owner hoặc approver của một task.",
+      ],
+    },
+  ],
+};
 export function Settings() {
   const { data, setData, editable, record } = useWorkspace();
   const [tab, setTab] = useState("workspace");
+  const [permRole, setPermRole] = useState<RoleKey>("founder");
   const [member, setMember] = useState<number | null | undefined>(undefined);
   const [roleSelection, setRoleSelection] = useState<string[]>([]);
   const [formError, setFormError] = useState("");
@@ -237,54 +509,112 @@ export function Settings() {
           </p>
         </>
       ) : (
-        <section className="surface">
-          <div className="section-heading">
-            <h2>Quyền theo trách nhiệm</h2>
-            <ShieldCheck size={25} />
-          </div>
-          <p className="muted">
-            Ma trận quyền dự kiến khi kết nối luồng ghi. Hiện database chỉ cho
-            phép thành viên đọc dữ liệu trong workspace của mình.
-          </p>
-          <div className="table-scroll">
-            <table className="data-table permission-table">
-              <thead>
-                <tr>
-                  <th>Thao tác</th>
-                  {roles.map((r) => (
-                    <th key={r}>{r}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { name: "Xem dữ liệu workspace", allowed: [1, 1, 1, 1, 1] },
-                  { name: "Cập nhật công việc", allowed: [1, 1, 1, 1, 0] },
-                  { name: "Chuyển stage quan trọng", allowed: [1, 0, 0, 0, 0] },
-                  {
-                    name: "Mở campaign đủ readiness",
-                    allowed: [1, 1, 0, 0, 0],
-                  },
-                  { name: "Override launch / WIP", allowed: [1, 0, 0, 0, 0] },
-                  { name: "Quản lý thành viên", allowed: [1, 0, 0, 0, 0] },
-                ].map((row) => (
-                  <tr key={row.name}>
-                    <td>{row.name}</td>
-                    {row.allowed.map((v, i) => (
-                      <td key={i}>
-                        {v ? (
-                          <ShieldCheck aria-label="Được phép" size={19} />
-                        ) : (
-                          <span aria-label="Không được phép">Không</span>
-                        )}
-                      </td>
+        <>
+          <section className="surface">
+            <div className="section-heading">
+              <h2>Quyền theo trách nhiệm</h2>
+              <ShieldCheck size={25} />
+            </div>
+            <p className="muted">
+              Quyền dưới đây được thực thi ngay trong database (kiểm tra role
+              trước mỗi lần ghi dữ liệu) — không chỉ ẩn nút trên giao diện. Ai
+              không đủ quyền sẽ bị chặn kể cả khi gọi thẳng API.
+            </p>
+            <div className="role-legend">
+              {systemRoles.map((r) => (
+                <div className="role-legend-item" key={r.key}>
+                  <r.icon size={20} />
+                  <div>
+                    <strong>{r.label}</strong>
+                    <span>{r.blurb}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="table-scroll">
+              <table className="data-table permission-table">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    {systemRoles.map((r) => (
+                      <th key={r.key}>{r.label}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody>
+                  {Object.entries(accessMatrix).map(([module, perRole]) => (
+                    <tr key={module}>
+                      <td>
+                        <strong>{module}</strong>
+                      </td>
+                      {systemRoles.map((r) => (
+                        <td key={r.key}>
+                          <Badge tone={accessTone[perRole[r.key]]}>
+                            {accessLabel[perRole[r.key]]}
+                          </Badge>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="form-hint">
+              Today và Settings chưa nối luồng ghi cho bất kỳ role nào — kể cả
+              Founder. Check-in, hoạt động và chỉnh workspace/thành viên hiện
+              chỉ là bản xem trước, mất khi tải lại trang.
+            </p>
+          </section>
+          <section className="surface">
+            <h2>Chi tiết theo role</h2>
+            <div className="role-switch" aria-label="Chọn role">
+              {systemRoles.map((r) => (
+                <button
+                  key={r.key}
+                  type="button"
+                  aria-pressed={permRole === r.key}
+                  onClick={() => setPermRole(r.key)}
+                >
+                  <r.icon size={16} />
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            <div className="permission-cards">
+              {roleDetails[permRole].map((row) => (
+                <article className="permission-card" key={row.module}>
+                  <div className="permission-card-head">
+                    <strong>{row.module}</strong>
+                    <Badge tone={accessTone[row.access]}>
+                      {accessLabel[row.access]}
+                    </Badge>
+                  </div>
+                  <ul>
+                    {row.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section className="surface">
+            <h2>Thêm thành viên mới</h2>
+            <p className="muted">
+              Tab “Đội hình” ở trên hiện chỉ là bản xem trước — thêm ở đó
+              không tạo tài khoản thật. Vì đã tắt đăng ký công khai, một
+              thành viên mới cần được cấp tài khoản Supabase Auth rồi thêm
+              thủ công vào bảng admin_memberships (workspace, user_id, danh
+              sách role) — việc này hiện chỉ làm được qua Supabase Dashboard,
+              chưa có màn hình riêng trong app.
+            </p>
+            <p className="muted">
+              Ai đăng nhập mà chưa có dòng trong admin_memberships sẽ thấy
+              thông báo “Tài khoản chưa được thêm vào workspace HẸN. Liên hệ
+              Founder để được cấp quyền” và không vào được workspace.
+            </p>
+          </section>
+        </>
       )}
       <Modal
         open={member !== undefined}

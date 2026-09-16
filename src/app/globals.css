@@ -2569,6 +2569,83 @@ textarea:disabled {
   line-height: 2.5;
   color: var(--muted);
 }
+.role-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 18px 0 26px;
+}
+.role-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fffdf8;
+}
+.role-legend-item strong {
+  display: block;
+  font-size: 13px;
+}
+.role-legend-item span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.role-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}
+.role-switch button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fffdf8;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.role-switch button[aria-pressed="true"] {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+.permission-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.permission-card {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 16px 18px;
+  background: #fffdf8;
+}
+.permission-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.permission-card-head strong {
+  font-size: 14px;
+}
+.permission-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.permission-card li {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 4px 0;
+}
 .person-cell {
   display: flex;
   align-items: center;
