@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -45,8 +46,9 @@ function payloadFrom(item: ContentItem, status = item.status) {
     learning: item.learning,
   };
 }
-const contributors = ["founder", "ops", "brand_designer"];
-function useContentMutation(item?: ContentItem) {
+export const contentContributors = ["founder", "ops", "brand_designer"];
+const contributors = contentContributors;
+export function useContentMutation(item?: ContentItem) {
   const { data } = useWorkspace();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -76,7 +78,7 @@ function useContentMutation(item?: ContentItem) {
   }
   return { run, pending, error };
 }
-function ContentForm({
+export function ContentForm({
   item,
   onClose,
 }: {
@@ -241,12 +243,10 @@ function ContentCalendar({
   items,
   month,
   onMonth,
-  onOpen,
 }: {
   items: ContentItem[];
   month: string;
   onMonth: (value: string) => void;
-  onOpen: (item: ContentItem) => void;
 }) {
   const date = new Date(`${month}-01T12:00:00Z`);
   const days = new Date(
@@ -297,16 +297,16 @@ function ContentCalendar({
                     {items
                       .filter((c) => c.publish === current)
                       .map((c) => (
-                        <button
+                        <Link
                           className="calendar-event"
                           key={c.id}
-                          onClick={() => onOpen(c)}
+                          href={`/content/${c.id}`}
                         >
                           {c.title}
                           <small>
                             {c.channel} · {c.status}
                           </small>
-                        </button>
+                        </Link>
                       ))}
                   </>
                 )}
@@ -374,11 +374,7 @@ export function ConnectedContentStudio() {
           ? TextT
           : FilmStrip;
     return (
-      <button
-        className="content-card"
-        key={c.id}
-        onClick={() => setSelection(c)}
-      >
+      <Link className="content-card" key={c.id} href={`/content/${c.id}`}>
         <div className={`content-art content-art-${i % 3}`}>
           <div>
             <Icon size={20} />
@@ -416,7 +412,7 @@ export function ConnectedContentStudio() {
             {!c.url && <small>Chưa gắn asset</small>}
           </footer>
         </div>
-      </button>
+      </Link>
     );
   }
   return (
@@ -587,12 +583,7 @@ export function ConnectedContentStudio() {
           </div>
         </>
       ) : (
-        <ContentCalendar
-          items={visible}
-          month={month}
-          onMonth={setMonth}
-          onOpen={setSelection}
-        />
+        <ContentCalendar items={visible} month={month} onMonth={setMonth} />
       )}
       <Modal
         open={selection !== undefined}

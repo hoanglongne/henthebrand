@@ -63,6 +63,8 @@ export type Product = {
   audience: string;
   updated_at?: string;
   stage_since?: string;
+  owner_id?: string | null;
+  owner?: string;
   impact_score?: number | null;
   effort_score?: number | null;
   evidenceCount?: number;

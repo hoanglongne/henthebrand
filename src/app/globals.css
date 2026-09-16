@@ -3537,3 +3537,27 @@ textarea:disabled {
   display: block;
   opacity: 0.75;
 }
+.question-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.question-row:last-of-type {
+  border-bottom: none;
+}
+.question-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.question-head strong {
+  font-size: 13.5px;
+}
+.question-answer {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.question-answer input {
+  flex: 1;
+}

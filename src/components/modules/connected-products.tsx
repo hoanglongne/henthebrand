@@ -67,6 +67,7 @@ function ProductForm({
   product?: Product;
   onClose: () => void;
 }) {
+  const { data } = useWorkspace();
   const { run, pending, error } = useProductMutation(product);
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -77,6 +78,7 @@ function ProductForm({
       moment: v("moment"),
       audience: v("audience"),
       promise: v("promise"),
+      owner_id: v("owner_id") || null,
       impact_score: Number(v("impact_score")) || null,
       effort_score: Number(v("effort_score")) || null,
     };
@@ -104,6 +106,18 @@ function ProductForm({
         </Field>
         <Field label="Lời hứa sản phẩm">
           <textarea name="promise" rows={3} defaultValue={product?.promise} />
+        </Field>
+        <Field label="Người phụ trách">
+          <select name="owner_id" defaultValue={product?.owner_id ?? ""}>
+            <option value="">Chưa phân công</option>
+            {data.members
+              .filter((m) => m.active !== false)
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+          </select>
         </Field>
         <div className="form-grid">
           <Field label="Tác động" hint="1 = nhỏ, 5 = đổi cuộc chơi">
@@ -171,6 +185,7 @@ export function ConnectedProducts() {
   const { data } = useWorkspace();
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("");
+  const [owner, setOwner] = useState("");
   const [sort, setSort] = useState("stage");
   const [compare, setCompare] = useState(false);
   const [left, setLeft] = useState("");
@@ -184,6 +199,7 @@ export function ConnectedProducts() {
     .filter(
       (p) =>
         (!stage || p.stage === stage) &&
+        (!owner || p.owner_id === owner) &&
         `${p.name} ${p.moment}`
           .toLocaleLowerCase("vi")
           .includes(query.toLocaleLowerCase("vi")),
@@ -235,6 +251,20 @@ export function ConnectedProducts() {
               {label}
             </option>
           ))}
+        </select>
+        <select
+          aria-label="Lọc người phụ trách"
+          value={owner}
+          onChange={(e) => setOwner(e.target.value)}
+        >
+          <option value="">Mọi người phụ trách</option>
+          {data.members
+            .filter((m) => m.active !== false)
+            .map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
         </select>
         <select
           aria-label="Sắp xếp sản phẩm"
@@ -305,6 +335,10 @@ export function ConnectedProducts() {
                         (p: Product) => stageLabels[p.stage] ?? p.stage,
                       ],
                       [
+                        "Người phụ trách",
+                        (p: Product) => p.owner ?? "Chưa phân công",
+                      ],
+                      [
                         "Đã ở giai đoạn này",
                         (p: Product) => {
                           const d = daysInStage(p);
@@ -367,7 +401,7 @@ export function ConnectedProducts() {
               <h2>{p.name}</h2>
               <p>{p.moment}</p>
               <div className="product-stage">
-                <span>{stageLabels[p.stage]}</span>
+                <span>{p.owner ?? "Chưa phân công"}</span>
                 <small>
                   {data.tasks.filter((t) => t.product === p.name).length} công
                   việc
@@ -439,6 +473,7 @@ function LiveProduct({ product }: { product: Product }) {
   const linked = data.tasks.filter((t) => t.product === product.name);
   const privilegedStages = ["build", "pilot", "live", "learned", "archived"];
   const evidenceCount = details?.evidence.length ?? product.evidenceCount ?? 0;
+  const openQuestions = (details?.questions ?? []).filter((q) => !q.answered_at);
   const stageDays = daysInStage(product);
   const gates = [
     {
@@ -455,6 +490,16 @@ function LiveProduct({ product }: { product: Product }) {
       label: "Có việc đã hoàn tất cho sản phẩm này",
       hint: `${linked.filter((t) => t.status === "done").length}/${linked.length} công việc đã xong.`,
       done: linked.some((t) => t.status === "done"),
+    },
+    {
+      label: "Đã trả lời hết câu hỏi mở",
+      hint: openQuestions.length
+        ? `Còn ${openQuestions.length} câu chưa có câu trả lời.`
+        : (details?.questions.length ?? 0) > 0
+          ? "Mọi câu hỏi đã có câu trả lời."
+          : "Chưa ghi câu hỏi nào cần trả lời trước khi đi tiếp.",
+      done:
+        (details?.questions.length ?? 0) > 0 && openQuestions.length === 0,
     },
     {
       label: "Đã chấm tác động và công sức",
@@ -524,7 +569,7 @@ function LiveProduct({ product }: { product: Product }) {
       <PageHeading
         eyebrow={stageLabels[product.stage]}
         title={product.name}
-        description={product.moment}
+        description={`${product.owner ?? "Chưa phân công"} · ${product.moment}`}
       >
         <Button
           variant="outline"
@@ -594,6 +639,11 @@ function LiveProduct({ product }: { product: Product }) {
           },
           { value: "work", label: "Công việc", count: linked.length },
           {
+            value: "discussion",
+            label: "Thảo luận",
+            count: details?.comments.length,
+          },
+          {
             value: "history",
             label: "Lịch sử giai đoạn",
             count: details?.stageChanges.length,
@@ -632,6 +682,193 @@ function LiveProduct({ product }: { product: Product }) {
               ))}
             </div>
           </section>
+          <div className="detail-grid">
+            <section className="surface">
+              <div className="section-heading">
+                <h2>Câu hỏi cần trả lời</h2>
+                <Badge
+                  tone={
+                    openQuestions.length
+                      ? "amber"
+                      : details?.questions.length
+                        ? "green"
+                        : "neutral"
+                  }
+                >
+                  {openQuestions.length
+                    ? `${openQuestions.length} chưa trả lời`
+                    : details?.questions.length
+                      ? "Đã trả lời hết"
+                      : "Chưa có câu hỏi"}
+                </Badge>
+              </div>
+              {details?.questions.length === 0 && (
+                <p className="muted">
+                  Ghi lại điều mình chưa biết — ví dụ “giá bao nhiêu thì họ
+                  mua?” — rồi trả lời khi đã có bằng chứng.
+                </p>
+              )}
+              {details?.questions.map((q) => (
+                <div className="question-row" key={q.id}>
+                  <div className="question-head">
+                    <strong>{q.question}</strong>
+                    {unlocked && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Xóa câu hỏi ${q.question}`}
+                        onClick={() =>
+                          run(
+                            {
+                              operation: "question_remove",
+                              payload: { id: q.id },
+                            } as ProductCommand,
+                            () => setReload((v) => v + 1),
+                          )
+                        }
+                      >
+                        Xóa
+                      </Button>
+                    )}
+                  </div>
+                  {unlocked ? (
+                    <form
+                      className="question-answer"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const form = e.currentTarget;
+                        const answer = String(
+                          new FormData(form).get("answer") || "",
+                        ).trim();
+                        run(
+                          {
+                            operation: "question_answer",
+                            payload: { id: q.id, answer },
+                          } as ProductCommand,
+                          () => setReload((v) => v + 1),
+                        );
+                      }}
+                    >
+                      <input
+                        name="answer"
+                        maxLength={2000}
+                        defaultValue={q.answer}
+                        placeholder="Câu trả lời khi đã có bằng chứng…"
+                      />
+                      <Button type="submit" variant="outline" size="sm">
+                        Lưu
+                      </Button>
+                    </form>
+                  ) : (
+                    <p className="muted">{q.answer || "Chưa có câu trả lời."}</p>
+                  )}
+                </div>
+              ))}
+              {unlocked && (
+                <form
+                  className="form-stack"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget;
+                    const question = String(
+                      new FormData(form).get("question") || "",
+                    ).trim();
+                    run(
+                      {
+                        operation: "question_add",
+                        payload: { question },
+                      } as ProductCommand,
+                      () => {
+                        form.reset();
+                        setReload((v) => v + 1);
+                      },
+                    );
+                  }}
+                >
+                  <Field label="Câu hỏi mới">
+                    <input name="question" required maxLength={500} />
+                  </Field>
+                  <Button type="submit" variant="outline">
+                    Thêm câu hỏi
+                  </Button>
+                </form>
+              )}
+            </section>
+            <section className="surface">
+              <h2>Link làm việc</h2>
+              <p className="muted">
+                Figma, tài liệu nghiên cứu, bảng tính giá — thứ đang làm dở,
+                khác với bằng chứng đã kiểm chứng.
+              </p>
+              {details?.links.map((l) => (
+                <div className="live-item" key={l.id}>
+                  <a href={l.url} target="_blank" rel="noopener noreferrer">
+                    {l.label} ↗
+                  </a>
+                  {unlocked && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Xóa link ${l.label}`}
+                      onClick={() =>
+                        run(
+                          {
+                            operation: "link_remove",
+                            payload: { id: l.id },
+                          } as ProductCommand,
+                          () => setReload((v) => v + 1),
+                        )
+                      }
+                    >
+                      Xóa
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {unlocked && (
+                <form
+                  className="form-stack"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget;
+                    const f = new FormData(form);
+                    run(
+                      {
+                        operation: "link_add",
+                        payload: {
+                          label: String(f.get("label") || "").trim(),
+                          url: String(f.get("url") || "").trim(),
+                        },
+                      } as ProductCommand,
+                      () => {
+                        form.reset();
+                        setReload((v) => v + 1);
+                      },
+                    );
+                  }}
+                >
+                  <div className="form-grid">
+                    <Field label="Tên link">
+                      <input name="label" required maxLength={200} />
+                    </Field>
+                    <Field label="Đường dẫn">
+                      <input
+                        name="url"
+                        type="url"
+                        required
+                        pattern="https?://.*"
+                        maxLength={2048}
+                        placeholder="https://…"
+                      />
+                    </Field>
+                  </div>
+                  <Button type="submit" variant="outline">
+                    Gắn link
+                  </Button>
+                </form>
+              )}
+            </section>
+          </div>
           <div className="detail-grid">
             <section className="surface product-promise">
               <span className="eyebrow">ĐIỀU MÌNH HỨA</span>
@@ -742,6 +979,51 @@ function LiveProduct({ product }: { product: Product }) {
         </>
       ) : tab === "work" ? (
         <TaskList tasks={linked} />
+      ) : tab === "discussion" ? (
+        <section className="surface live-panel">
+          <h2>Bàn về ý tưởng này</h2>
+          {unlocked && (
+            <form
+              className="form-stack"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const body = String(
+                  new FormData(form).get("body") || "",
+                ).trim();
+                run(
+                  { operation: "comment_add", payload: { body } } as ProductCommand,
+                  () => {
+                    form.reset();
+                    setReload((v) => v + 1);
+                  },
+                );
+              }}
+            >
+              <Field label="Bình luận mới">
+                <textarea name="body" required rows={3} maxLength={5000} />
+              </Field>
+              <Button type="submit">Lưu bình luận</Button>
+            </form>
+          )}
+          {details?.comments.length === 0 && <p>Chưa có bình luận nào.</p>}
+          {details?.comments.map((c) => (
+            <article className="live-comment" key={c.id}>
+              <strong>
+                {data.members.find((m) => m.id === c.author_id)?.name ??
+                  "Thành viên"}
+              </strong>
+              <span className="small muted">
+                {" "}
+                ·{" "}
+                {new Date(c.created_at).toLocaleString("vi-VN", {
+                  timeZone: "Asia/Ho_Chi_Minh",
+                })}
+              </span>
+              <p className="preserve-lines">{c.body}</p>
+            </article>
+          ))}
+        </section>
       ) : (
         <section className="surface">
           <h2>Vì sao mình đi tiếp?</h2>

@@ -29,6 +29,8 @@ import {
   type ContentItem,
 } from "@/lib/preview-data";
 import { ConnectedContentStudio } from "./connected-content";
+import { ContentDetail } from "./content-detail";
+import { Empty as EmptyState } from "../ui/workspace-ui";
 function ContentForm({
   item,
   onClose,
@@ -171,6 +173,17 @@ export function ContentStudio() {
     <ConnectedContentStudio />
   ) : (
     <PreviewContentStudio />
+  );
+}
+export function ContentItemPage({ id }: { id: string }) {
+  const { data } = useWorkspace();
+  return data.mode === "connected" ? (
+    <ContentDetail id={id} />
+  ) : (
+    <EmptyState
+      title="Chi tiết nội dung cần workspace thật"
+      description="Bản xem thử chỉ có danh sách; mở nội dung sau khi kết nối Supabase."
+    />
   );
 }
 function PreviewContentStudio() {

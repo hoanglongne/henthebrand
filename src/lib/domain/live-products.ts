@@ -4,6 +4,7 @@ const productFields = z.object({
   moment: z.string().trim().max(2000),
   audience: z.string().trim().max(2000),
   promise: z.string().trim().max(2000),
+  owner_id: z.uuid().nullable(),
   impact_score: z.number().int().min(1).max(5).nullable(),
   effort_score: z.number().int().min(1).max(5).nullable(),
 });
@@ -52,6 +53,36 @@ const variants = z.discriminatedUnion("operation", [
     operation: z.literal("evidence_remove"),
     payload: z.object({ id: z.uuid() }),
   }),
+  z.object({
+    operation: z.literal("comment_add"),
+    payload: z.object({ body: z.string().trim().min(1).max(5000) }),
+  }),
+  z.object({
+    operation: z.literal("question_add"),
+    payload: z.object({ question: z.string().trim().min(1).max(500) }),
+  }),
+  z.object({
+    operation: z.literal("question_answer"),
+    payload: z.object({
+      id: z.uuid(),
+      answer: z.string().trim().max(2000),
+    }),
+  }),
+  z.object({
+    operation: z.literal("question_remove"),
+    payload: z.object({ id: z.uuid() }),
+  }),
+  z.object({
+    operation: z.literal("link_add"),
+    payload: z.object({
+      label: z.string().trim().min(1).max(200),
+      url: httpsUrl,
+    }),
+  }),
+  z.object({
+    operation: z.literal("link_remove"),
+    payload: z.object({ id: z.uuid() }),
+  }),
 ]);
 export const productInputSchema = z
   .object({
@@ -70,6 +101,20 @@ export const productInputSchema = z
 export type ProductCommand = z.infer<typeof variants>;
 export type ProductInput = z.infer<typeof productInputSchema>;
 export type ProductDetails = {
+  comments: {
+    id: string;
+    body: string;
+    author_id: string;
+    created_at: string;
+  }[];
+  questions: {
+    id: string;
+    question: string;
+    answer: string;
+    answered_at: string | null;
+    answered_by: string | null;
+  }[];
+  links: { id: string; label: string; url: string }[];
   evidence: {
     id: string;
     kind: string;
@@ -105,6 +150,8 @@ export function productError(message: string): string {
       "Chỉ Founder được chuyển sản phẩm sang Build, Pilot, Live, Learned hoặc Archived.",
     HEN_STAGE_BUILD_LIMIT:
       "Đã có một sản phẩm đang Build. Hoàn tất hoặc đổi giai đoạn sản phẩm đó trước.",
+    HEN_INVALID_OWNER:
+      "Người phụ trách phải là thành viên đang hoạt động, có quyền làm việc.",
     HEN_STAGE_DISCOVERY_LIMIT:
       "Đội đang có một sản phẩm ở Discovery/Design. Giữ một sản phẩm trong giai đoạn này.",
   };

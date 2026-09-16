@@ -21,6 +21,7 @@ const fields = {
   moment: "Một khoảnh khắc",
   audience: "Cặp đôi",
   promise: "Lời hứa",
+  owner_id: null,
   impact_score: 4,
   effort_score: 2,
 };

@@ -156,6 +156,9 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
     })) as Task[],
     products: (products.data ?? []).map((p) => ({
       ...p,
+      owner:
+        members.data?.find((m) => m.user_id === p.owner_id)?.display_name ??
+        "Chưa phân công",
       evidenceCount: (evidence.data ?? []).filter((e) => e.product_id === p.id)
         .length,
     })),

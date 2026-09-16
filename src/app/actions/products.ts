@@ -87,7 +87,8 @@ export async function readProductDetails(
         ok: false,
         message: "Không tìm thấy sản phẩm hoặc bạn chưa có quyền truy cập.",
       };
-    const [evidence, stageChanges] = await Promise.all([
+    const [evidence, stageChanges, comments, questions, links] =
+      await Promise.all([
       client
         .from("admin_product_evidence")
         .select("id,kind,title,summary,source_url,observed_at")
@@ -102,8 +103,29 @@ export async function readProductDetails(
         .eq("product_id", productId)
         .order("created_at", { ascending: false })
         .limit(100),
+      client
+        .from("admin_product_comments")
+        .select("id,body,author_id,created_at")
+        .eq("workspace_id", workspaceId)
+        .eq("product_id", productId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      client
+        .from("admin_product_questions")
+        .select("id,question,answer,answered_at,answered_by")
+        .eq("workspace_id", workspaceId)
+        .eq("product_id", productId)
+        .order("created_at")
+        .limit(100),
+      client
+        .from("admin_product_links")
+        .select("id,label,url")
+        .eq("workspace_id", workspaceId)
+        .eq("product_id", productId)
+        .order("created_at")
+        .limit(100),
     ]);
-    if ([evidence, stageChanges].some((r) => r.error))
+    if ([evidence, stageChanges, comments, questions, links].some((r) => r.error))
       return {
         ok: false,
         message:
@@ -114,6 +136,9 @@ export async function readProductDetails(
       details: {
         evidence: evidence.data ?? [],
         stageChanges: stageChanges.data ?? [],
+        comments: comments.data ?? [],
+        questions: questions.data ?? [],
+        links: links.data ?? [],
       },
     };
   } catch {

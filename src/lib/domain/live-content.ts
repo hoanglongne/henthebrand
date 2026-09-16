@@ -44,6 +44,22 @@ const contentFields = z
 const variants = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("create"), payload: contentFields }),
   z.object({ operation: z.literal("update"), payload: contentFields }),
+  z.object({
+    operation: z.literal("checklist_add"),
+    payload: z.object({ label: z.string().trim().min(1).max(300) }),
+  }),
+  z.object({
+    operation: z.literal("checklist_toggle"),
+    payload: z.object({ id: z.uuid(), completed: z.boolean() }),
+  }),
+  z.object({
+    operation: z.literal("checklist_remove"),
+    payload: z.object({ id: z.uuid() }),
+  }),
+  z.object({
+    operation: z.literal("comment_add"),
+    payload: z.object({ body: z.string().trim().min(1).max(5000) }),
+  }),
 ]);
 export const contentInputSchema = z
   .object({
@@ -61,6 +77,15 @@ export const contentInputSchema = z
   });
 export type ContentCommand = z.infer<typeof variants>;
 export type ContentInput = z.infer<typeof contentInputSchema>;
+export type ContentDetails = {
+  checklist: { id: string; label: string; completed: boolean }[];
+  comments: {
+    id: string;
+    body: string;
+    author_id: string;
+    created_at: string;
+  }[];
+};
 export type ContentMutateResponse =
   | { ok: true; contentId: string }
   | { ok: false; message: string; conflict?: boolean };
