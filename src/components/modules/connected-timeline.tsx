@@ -1,11 +1,19 @@
 "use client";
 import Link from "next/link";
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CalendarBlank } from "@phosphor-icons/react";
+import {
+  ArrowUpRight,
+  CalendarBlank,
+  ArrowLeft,
+  ArrowRight,
+} from "@phosphor-icons/react";
 import { mutateMilestone } from "@/app/actions/timeline";
+import { mutateCampaign } from "@/app/actions/campaigns";
+import { mutateWork } from "@/app/actions/work";
 import { type MilestoneCommand } from "@/lib/domain/live-timeline";
-import { statusLabels, type Milestone } from "@/lib/domain/types";
+import { statusLabels, type Milestone, type Task } from "@/lib/domain/types";
+import { type Campaign } from "@/lib/preview-data";
 import { useWorkspace } from "../workspace-provider";
 import {
   PageHeading,
@@ -17,6 +25,34 @@ import {
 } from "../ui/workspace-ui";
 import { Button } from "../ui/button";
 import { dayOffset } from "@/lib/domain/rules";
+const TOTAL_WEEKS = 24;
+const windowOptions = [
+  { value: 24, label: "Cả 24 tuần" },
+  { value: 12, label: "12 tuần" },
+  { value: 8, label: "8 tuần" },
+  { value: 4, label: "4 tuần" },
+];
+function weekOf(start: string, date: string) {
+  if (!date) return null;
+  const days = Math.floor(
+    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) /
+      86400000,
+  );
+  return Math.floor(days / 7) + 1;
+}
+function shiftDate(date: string | undefined | null, weeks: number) {
+  return date ? dayOffset(date, weeks * 7) : null;
+}
+function clampWeek(week: number) {
+  return Math.min(TOTAL_WEEKS, Math.max(1, week));
+}
+type DragState = {
+  kind: "milestone" | "campaign" | "task";
+  id: string;
+  mode: "move" | "resize";
+  startX: number;
+  offset: number;
+};
 function useMilestoneMutation(milestone?: Milestone) {
   const { data } = useWorkspace();
   const router = useRouter();
@@ -52,10 +88,204 @@ export function ConnectedTimeline() {
   const [view, setView] = useState("roadmap");
   const [owner, setOwner] = useState("");
   const [stream, setStream] = useState("");
+  const router = useRouter();
   const [selected, setSelected] = useState<Milestone | null>(null);
+  const [span, setSpan] = useState(TOTAL_WEEKS);
+  const [from, setFrom] = useState(1);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [preview, setPreview] = useState<{
+    id: string;
+    start: number;
+    end: number;
+  } | null>(null);
+  const [dragError, setDragError] = useState("");
+  const [, startDragSave] = useTransition();
+  const chartRef = useRef<HTMLDivElement>(null);
   const { run, pending, error } = useMilestoneMutation(selected ?? undefined);
   const planner = data.roles.some((r) => ["founder", "ops"].includes(r));
   const unlocked = !!data.catalogReady && planner;
+  const lastWeek = Math.min(TOTAL_WEEKS, from + span - 1);
+  const weeks = Array.from({ length: lastWeek - from + 1 }, (_, i) => from + i);
+  const gridStyle = {
+    gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))`,
+  };
+  // Thanh chỉ vẽ phần nằm trong cửa sổ đang xem.
+  function placement(start: number, end: number) {
+    const left = Math.max(start, from);
+    const right = Math.min(end, lastWeek);
+    if (right < left) return null;
+    return {
+      gridColumn: `${left - from + 1} / ${right - from + 2}`,
+    } as React.CSSProperties;
+  }
+  function previewFor(
+    kind: DragState["kind"],
+    id: string,
+    start: number,
+    end: number,
+  ) {
+    if (preview?.id === id && drag?.kind === kind)
+      return { start: preview.start, end: preview.end };
+    return { start, end };
+  }
+  const campaignRows = data.campaigns
+    .map((c) => ({
+      ...c,
+      startWeek: weekOf(data.startDate, c.launch),
+      endWeek: weekOf(data.startDate, c.end),
+    }))
+    .filter(
+      (c): c is Campaign & { startWeek: number; endWeek: number } =>
+        c.startWeek !== null && c.endWeek !== null,
+    )
+    .map((c) => ({
+      ...c,
+      startWeek: clampWeek(c.startWeek),
+      endWeek: clampWeek(Math.max(c.endWeek, c.startWeek)),
+    }));
+  const taskWeeks = data.tasks
+    .map((t) => ({ ...t, week: weekOf(data.startDate, t.due_date) }))
+    .filter((t): t is Task & { week: number } => t.week !== null)
+    .map((t) => ({ ...t, week: clampWeek(t.week) }));
+  function startDrag(
+    e: React.PointerEvent,
+    kind: DragState["kind"],
+    id: string,
+    mode: DragState["mode"],
+    anchor: number,
+  ) {
+    if (!unlocked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDragError("");
+    setDrag({ kind, id, mode, startX: e.clientX, offset: anchor });
+  }
+  function weekDelta(clientX: number) {
+    const width = chartRef.current?.querySelector(".roadmap-weeks")?.clientWidth;
+    if (!width || !drag) return 0;
+    return Math.round(((clientX - drag.startX) / width) * weeks.length);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag) return;
+    const delta = weekDelta(e.clientX);
+    if (drag.kind === "milestone") {
+      const m = data.milestones.find((x) => x.id === drag.id);
+      if (!m) return;
+      if (drag.mode === "resize") {
+        const end = clampWeek(Math.max(m.start_week, m.end_week + delta));
+        setPreview({ id: drag.id, start: m.start_week, end });
+      } else {
+        const width = m.end_week - m.start_week;
+        const start = clampWeek(
+          Math.min(m.start_week + delta, TOTAL_WEEKS - width),
+        );
+        setPreview({ id: drag.id, start, end: start + width });
+      }
+    } else if (drag.kind === "campaign") {
+      const c = campaignRows.find((x) => x.id === drag.id);
+      if (!c) return;
+      const width = c.endWeek - c.startWeek;
+      const start = clampWeek(Math.min(c.startWeek + delta, TOTAL_WEEKS - width));
+      setPreview({ id: drag.id, start, end: start + width });
+    } else {
+      const t = taskWeeks.find((x) => x.id === drag.id);
+      if (!t) return;
+      const week = clampWeek(t.week + delta);
+      setPreview({ id: drag.id, start: week, end: week });
+    }
+  }
+  function onPointerUp() {
+    if (!drag) return;
+    const moved = preview;
+    const current = drag;
+    setDrag(null);
+    setPreview(null);
+    if (!moved) return;
+    startDragSave(async () => {
+      try {
+        const result = await saveDrag(current, moved);
+        if (result) setDragError(result);
+        else router.refresh();
+      } catch {
+        setDragError("Kết nối bị gián đoạn. Tải lại để kiểm tra dữ liệu.");
+      }
+    });
+  }
+  async function saveDrag(
+    current: DragState,
+    moved: { start: number; end: number },
+  ): Promise<string | null> {
+    if (current.kind === "milestone") {
+      const m = data.milestones.find((x) => x.id === current.id);
+      if (!m || (m.start_week === moved.start && m.end_week === moved.end))
+        return null;
+      const r = await mutateMilestone({
+        workspaceId: data.workspaceId,
+        milestoneId: m.id,
+        expected: m.updated_at ?? null,
+        operation: "update",
+        payload: {
+          name: m.name,
+          description: m.description,
+          start_week: moved.start,
+          end_week: moved.end,
+        },
+      });
+      return r.ok ? null : r.message;
+    }
+    if (current.kind === "campaign") {
+      const c = campaignRows.find((x) => x.id === current.id);
+      if (!c || c.startWeek === moved.start) return null;
+      const shift = moved.start - c.startWeek;
+      const r = await mutateCampaign({
+        workspaceId: data.workspaceId,
+        campaignId: c.id,
+        expected: c.updated_at ?? null,
+        operation: "update",
+        payload: {
+          name: c.name,
+          product_id: c.product_id ?? null,
+          owner_id: c.owner_id ?? null,
+          occasion: c.occasion,
+          channel: c.channel,
+          launch_date: shiftDate(c.launch, shift)!,
+          end_date: shiftDate(c.end, shift)!,
+          budget: c.budget,
+          target_orders: c.orders,
+          brief: c.brief,
+          stop_condition: c.stop,
+          // Các hạn phụ dời theo để không phá ràng buộc ngày của campaign.
+          brief_due: shiftDate(c.briefDue, shift),
+          asset_due: shiftDate(c.assetDue, shift),
+          postmortem_due: shiftDate(c.postmortemDue, shift),
+          cutoff_date: shiftDate(c.cutoff, shift),
+          support_note: c.support ?? "",
+        },
+      });
+      return r.ok ? null : r.message;
+    }
+    const t = taskWeeks.find((x) => x.id === current.id);
+    if (!t || t.week === moved.start) return null;
+    const r = await mutateWork({
+      workspaceId: data.workspaceId,
+      taskId: t.id,
+      expected: t.updated_at ?? null,
+      operation: "update",
+      payload: {
+        title: t.title,
+        owner_id: t.owner_id ?? null,
+        approver_id: t.approver_id ?? null,
+        product_id: t.product_id ?? null,
+        priority: t.priority,
+        effort: t.effort,
+        due_date: dayOffset(t.due_date, (moved.start - t.week) * 7),
+        definition_of_done: t.definition_of_done,
+        workstream: t.workstream,
+      },
+    });
+    return r.ok ? null : r.message;
+  }
   const tasks = data.tasks.filter(
     (t) =>
       (!owner || t.owner === owner) && (!stream || t.workstream === stream),
@@ -108,42 +338,201 @@ export function ConnectedTimeline() {
       />
       {view === "roadmap" ? (
         <>
+          <div className="work-toolbar">
+            <select
+              aria-label="Khoảng thời gian hiển thị"
+              value={span}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setSpan(next);
+                setFrom((f) => clampWeek(Math.min(f, TOTAL_WEEKS - next + 1)));
+              }}
+            >
+              {windowOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            {span < TOTAL_WEEKS && (
+              <div className="button-row">
+                <Button
+                  variant="outline"
+                  aria-label="Lùi khoảng thời gian"
+                  disabled={from <= 1}
+                  onClick={() => setFrom((f) => clampWeek(f - span))}
+                >
+                  <ArrowLeft size={16} />
+                </Button>
+                <Button
+                  variant="outline"
+                  aria-label="Tiến khoảng thời gian"
+                  disabled={from + span > TOTAL_WEEKS}
+                  onClick={() =>
+                    setFrom((f) =>
+                      clampWeek(Math.min(f + span, TOTAL_WEEKS - span + 1)),
+                    )
+                  }
+                >
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            )}
+            <span className="count-label">
+              Tuần {from}–{lastWeek} · {dayOffset(data.startDate, (from - 1) * 7)}{" "}
+              → {dayOffset(data.startDate, lastWeek * 7 - 1)}
+            </span>
+          </div>
+          {unlocked && (
+            <p className="form-hint">
+              Kéo thanh mốc, campaign hoặc thẻ công việc sang tuần khác để dời
+              lịch. Kéo mép phải của một mốc để đổi độ dài.
+            </p>
+          )}
+          {dragError && (
+            <p className="error-message" role="alert">
+              {dragError}
+            </p>
+          )}
           <div className="timeline-scroll">
-            <div className="roadmap-chart">
+            <div
+              className={`roadmap-chart${drag ? " is-dragging-chart" : ""}`}
+              ref={chartRef}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            >
               <div className="roadmap-header">
                 <strong>Mốc của đội</strong>
-                <div className="week-grid">
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <span key={i}>{i + 1}</span>
+                <div className="week-grid" style={gridStyle}>
+                  {weeks.map((w) => (
+                    <span key={w}>{w}</span>
                   ))}
                 </div>
               </div>
-              {data.milestones.map((m, i) => (
-                <div className="roadmap-row" key={m.id}>
-                  <button
-                    className="roadmap-label"
-                    onClick={() => setSelected(m)}
-                  >
-                    <small>CHẶNG {i + 1}</small>
-                    <strong>{m.name}</strong>
-                  </button>
-                  <div className="week-grid roadmap-weeks">
-                    {Array.from({ length: 24 }, (_, j) => (
-                      <span className="week-cell" key={j} />
-                    ))}
+              {data.milestones.map((m, i) => {
+                const view = previewFor("milestone", m.id, m.start_week, m.end_week);
+                return (
+                  <div className="roadmap-row" key={m.id}>
                     <button
-                      className={`roadmap-bar bar-${i % 3}`}
-                      style={{
-                        gridColumn: `${m.start_week} / ${m.end_week + 1}`,
-                      }}
+                      className="roadmap-label"
                       onClick={() => setSelected(m)}
-                      aria-label={`Chi tiết ${m.name}, tuần ${m.start_week} đến ${m.end_week}`}
                     >
-                      {m.end_week - m.start_week > 1 ? m.name : "↗"}
+                      <small>CHẶNG {i + 1}</small>
+                      <strong>{m.name}</strong>
                     </button>
+                    <div className="week-grid roadmap-weeks" style={gridStyle}>
+                      {weeks.map((w) => (
+                        <span className="week-cell" key={w} />
+                      ))}
+                      {placement(view.start, view.end) && (
+                        <div
+                          className={`roadmap-bar bar-${i % 3}${
+                            drag?.id === m.id ? " is-dragging" : ""
+                          }`}
+                          style={placement(view.start, view.end) ?? undefined}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => !drag && setSelected(m)}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && setSelected(m)
+                          }
+                          onPointerDown={(e) =>
+                            startDrag(e, "milestone", m.id, "move", view.start)
+                          }
+                          aria-label={`Chi tiết ${m.name}, tuần ${view.start} đến ${view.end}`}
+                        >
+                          {view.end - view.start > 1 ? m.name : "↗"}
+                          {unlocked && (
+                            <span
+                              className="bar-resize"
+                              aria-hidden="true"
+                              onPointerDown={(e) =>
+                                startDrag(e, "milestone", m.id, "resize", view.end)
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {campaignRows.length > 0 && (
+                <div className="roadmap-header roadmap-subhead">
+                  <strong>Campaign</strong>
+                  <div className="week-grid" style={gridStyle} />
+                </div>
+              )}
+              {campaignRows.map((c) => {
+                const view = previewFor("campaign", c.id, c.startWeek, c.endWeek);
+                return (
+                  <div className="roadmap-row" key={c.id}>
+                    <Link className="roadmap-label" href={`/campaigns/${c.id}`}>
+                      <small>{c.occasion}</small>
+                      <strong>{c.name}</strong>
+                    </Link>
+                    <div className="week-grid roadmap-weeks" style={gridStyle}>
+                      {weeks.map((w) => (
+                        <span className="week-cell" key={w} />
+                      ))}
+                      {placement(view.start, view.end) && (
+                        <div
+                          className={`roadmap-bar bar-campaign${
+                            drag?.id === c.id ? " is-dragging" : ""
+                          }`}
+                          style={placement(view.start, view.end) ?? undefined}
+                          onPointerDown={(e) =>
+                            startDrag(e, "campaign", c.id, "move", view.start)
+                          }
+                          aria-label={`${c.name}, tuần ${view.start} đến ${view.end}`}
+                        >
+                          {c.name}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {taskWeeks.length > 0 && (
+                <div className="roadmap-header roadmap-subhead">
+                  <strong>Công việc theo hạn</strong>
+                  <div className="week-grid" style={gridStyle} />
+                </div>
+              )}
+              {taskWeeks.length > 0 && (
+                <div className="roadmap-row roadmap-tasks">
+                  <span className="roadmap-label roadmap-label-static">
+                    <small>{taskWeeks.length} việc có hạn</small>
+                    <strong>Kéo để dời hạn</strong>
+                  </span>
+                  <div className="week-grid roadmap-weeks" style={gridStyle}>
+                    {weeks.map((w) => (
+                      <span className="week-cell" key={w} />
+                    ))}
+                    {taskWeeks.map((t) => {
+                      const view = previewFor("task", t.id, t.week, t.week);
+                      const cell = placement(view.start, view.start);
+                      if (!cell) return null;
+                      return (
+                        <span
+                          key={t.id}
+                          className={`task-chip status-${t.status}${
+                            drag?.id === t.id ? " is-dragging" : ""
+                          }`}
+                          style={cell}
+                          title={`${t.code} · ${t.title} · hạn ${t.due_date}`}
+                          onPointerDown={(e) =>
+                            startDrag(e, "task", t.id, "move", view.start)
+                          }
+                        >
+                          {t.code}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
           <div className="milestone-cards">

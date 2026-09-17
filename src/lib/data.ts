@@ -33,87 +33,104 @@ export const getSnapshot = cache(async (): Promise<Snapshot> => {
   }
   if (!membership) redirect("/login?error=membership");
   const workspace = membership.workspace_id;
-  const { data: workVersion } = await client.rpc("admin_work_version");
-  const { data: catalogVersion } = await client.rpc("admin_catalog_version");
-  const { data: campaignVersion } = await client.rpc("admin_campaign_version");
-  const { data: contentVersion } = await client.rpc("admin_content_version");
-  const { data: operationsVersion } = await client.rpc(
-    "admin_operations_version",
-  );
-  const { data: settingsVersion } = await client.rpc("admin_settings_version");
-  const results = await Promise.all([
-    client.from("admin_workspaces").select("*").eq("id", workspace).single(),
-    (async () => {
-      const rows = [];
-      for (let offset = 0; ; offset += 500) {
-        const result = await client
-          .from("admin_tasks")
-          .select("*")
-          .eq("workspace_id", workspace)
-          .is("deleted_at", null)
-          .order("id")
-          .range(offset, offset + 499);
-        if (result.error) return result;
-        rows.push(...result.data);
-        if (result.data.length < 500) break;
-      }
-      rows.sort((a, b) =>
-        (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"),
-      );
-      return { data: rows, error: null };
-    })(),
-    client
-      .from("admin_products")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("sort_order"),
-    client
-      .from("admin_milestones")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("start_week"),
-    client.from("admin_memberships").select("*").eq("workspace_id", workspace),
-    client
-      .from("admin_campaigns")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("launch_date"),
-    client
-      .from("admin_campaign_readiness_items")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("created_at"),
-    client
-      .from("admin_content_items")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("created_at", { ascending: false }),
-    client
-      .from("admin_stock_items")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("name"),
-    client
-      .from("admin_vendors")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("name"),
-    client
-      .from("admin_order_issues")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("created_at", { ascending: false }),
-    client
-      .from("admin_product_evidence")
-      .select("product_id")
-      .eq("workspace_id", workspace),
-    // RLS chỉ trả danh sách chờ cho Founder; role khác nhận mảng rỗng.
-    client
-      .from("admin_pending_members")
-      .select("*")
-      .eq("workspace_id", workspace)
-      .order("created_at"),
+  // Mọi truy vấn chạy song song: gọi tuần tự làm mỗi lần tải lại chậm thêm vài trăm ms.
+  const [versions, results] = await Promise.all([
+    // Thiếu migration thì probe lỗi; bỏ qua để module đó tự hiện hướng dẫn cài.
+    Promise.all(
+      [
+        "admin_work_version",
+        "admin_catalog_version",
+        "admin_campaign_version",
+        "admin_content_version",
+        "admin_operations_version",
+        "admin_settings_version",
+      ].map((fn) => client.rpc(fn).then((r) => r.data)),
+    ),
+    Promise.all([
+      client.from("admin_workspaces").select("*").eq("id", workspace).single(),
+      (async () => {
+        const rows = [];
+        for (let offset = 0; ; offset += 500) {
+          const result = await client
+            .from("admin_tasks")
+            .select("*")
+            .eq("workspace_id", workspace)
+            .is("deleted_at", null)
+            .order("id")
+            .range(offset, offset + 499);
+          if (result.error) return result;
+          rows.push(...result.data);
+          if (result.data.length < 500) break;
+        }
+        rows.sort((a, b) =>
+          (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"),
+        );
+        return { data: rows, error: null };
+      })(),
+      client
+        .from("admin_products")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("sort_order"),
+      client
+        .from("admin_milestones")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("start_week"),
+      client
+        .from("admin_memberships")
+        .select("*")
+        .eq("workspace_id", workspace),
+      client
+        .from("admin_campaigns")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("launch_date"),
+      client
+        .from("admin_campaign_readiness_items")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("created_at"),
+      client
+        .from("admin_content_items")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("created_at", { ascending: false }),
+      client
+        .from("admin_stock_items")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("name"),
+      client
+        .from("admin_vendors")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("name"),
+      client
+        .from("admin_order_issues")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("created_at", { ascending: false }),
+      client
+        .from("admin_product_evidence")
+        .select("product_id")
+        .eq("workspace_id", workspace),
+      // RLS chỉ trả danh sách chờ cho Founder; role khác nhận mảng rỗng.
+      client
+        .from("admin_pending_members")
+        .select("*")
+        .eq("workspace_id", workspace)
+        .order("created_at"),
+    ]),
   ]);
+  const [
+    workVersion,
+    catalogVersion,
+    campaignVersion,
+    contentVersion,
+    operationsVersion,
+    settingsVersion,
+  ] = versions;
   if (results.some((r) => r.error))
     throw new Error("Không thể tải dữ liệu HẸN. Vui lòng thử lại.");
   const [

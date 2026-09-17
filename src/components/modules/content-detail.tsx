@@ -152,16 +152,28 @@ function LiveContent({ item }: { item: ContentItem }) {
                 <input
                   type="checkbox"
                   checked={step.completed}
-                  disabled={!unlocked || pending}
-                  onChange={(e) =>
+                  disabled={!unlocked}
+                  onChange={(e) => {
+                    const completed = e.target.checked;
+                    // Tick hiện ngay, không đợi vòng lưu; sai thì lần tải sau trả về đúng.
+                    setDetails((d) =>
+                      d
+                        ? {
+                            ...d,
+                            checklist: d.checklist.map((c) =>
+                              c.id === step.id ? { ...c, completed } : c,
+                            ),
+                          }
+                        : d,
+                    );
                     run(
                       {
                         operation: "checklist_toggle",
-                        payload: { id: step.id, completed: e.target.checked },
+                        payload: { id: step.id, completed },
                       } as ContentCommand,
                       () => setReload((v) => v + 1),
-                    )
-                  }
+                    );
+                  }}
                 />
                 <span>{step.label}</span>
               </label>
